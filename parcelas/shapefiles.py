@@ -27,8 +27,9 @@ def get_wrs2_grid(output_file="wrs2_descending.geojson"):
         z.extractall(temp_dir)
         print("Unzipped successfully.")
     except zipfile.BadZipFile:
-        print("Error: The downloaded file is not a valid zip. The URL may have moved.")
-        return
+        raise ValueError(
+            "Error: The downloaded file is not a valid zip. The URL may have moved."
+        )
 
     # Find the shapefile (it might be in a subfolder or named differently)
     shp_file = next((f for f in os.listdir(temp_dir) if f.endswith(".shp")), None)
@@ -36,17 +37,12 @@ def get_wrs2_grid(output_file="wrs2_descending.geojson"):
     if shp_file:
         print(f"Converting {shp_file} to GeoJSON...")
         gdf = gpd.read_file(os.path.join(temp_dir, shp_file))
-
-        # Standardize to WGS84
         gdf = gdf.to_crs(epsg=4326)
-
-        # Save to GeoJSON
         gdf.to_file(output_file, driver="GeoJSON")
         print(f"Success! Saved to {output_file}")
         return gdf
     else:
-        print("Could not find a .shp file in the zip.")
-        return
+        raise ValueError("Could not find a .shp file in the zip.")
 
 
 def get_chile_boundary(output_file="chile.geojson"):
@@ -58,3 +54,16 @@ def get_chile_boundary(output_file="chile.geojson"):
     chile = world[world["ADMIN"] == "Chile"]
     chile.to_file(output_file, driver="GeoJSON")
     return chile
+
+
+def get_chile_wrs2_tiles():
+
+    wrs2_tiles = get_wrs2_grid()
+    chile_boundary = get_chile_boundary()
+    intersects = wrs2_tiles.intersects(chile_boundary.geometry.unary_union)
+    return gdf[intersects]
+
+
+def get_wrs2_tiles(path, row):
+    wrs2_tiles = get_wrs2_grid()
+    return wrs2_tiles[(wrs2_tiles["PATH"] == path) & (wrs2_tiles["ROW"] == row)]
