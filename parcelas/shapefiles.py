@@ -61,7 +61,7 @@ def get_chile_wrs2_tiles():
     wrs2_tiles = get_wrs2_grid()
     chile_boundary = get_chile_boundary()
     intersects = wrs2_tiles.intersects(chile_boundary.geometry.unary_union)
-    return gdf[intersects]
+    return wrs2_tiles[intersects]
 
 
 def get_wrs2_tiles(path, row):

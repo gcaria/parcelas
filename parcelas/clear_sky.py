@@ -1,4 +1,4 @@
-from functools import cached_property
+import logging
 
 import odc.stac
 import planetary_computer
@@ -13,7 +13,7 @@ def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
 
     search = catalog.search(
         collections=["landsat-c2-l2"],
-        intersects=shp.unary_union,
+        intersects=shp.union_all(),
         datetime=time_range,
     )
 
@@ -21,12 +21,12 @@ def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
 
     # Get rid of L7 data
     items = [i for i in items if "7" not in i.properties["platform"]]
-    print(f"Found {len(items)} Items")
+    logging.info(f"Found {len(items)} Items")
 
     return odc.stac.stac_load(
         items,
         bands=bands,
-        intersects=shp.unary_union,
+        intersects=shp.union_all(),
         chunks={"y": 512, "x": 512},
         nodata=65535,
     )
