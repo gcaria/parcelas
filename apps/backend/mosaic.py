@@ -13,8 +13,10 @@ router = APIRouter()
 async def create_mosaic_json(tile_ids: List[str]):
     """Create mosaic.json dynamically based on requested WRS2 tiles"""
 
-    # Base URL where your COGs are stored (e.g., AWS S3, Google Cloud Storage)
-    COG_BASE_URL = os.getenv("COG_STORAGE_URL", "https://your-bucket.s3.amazonaws.com")
+    COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
+
+    if not COG_BASE_URL:
+        return {"error": "COG_STORAGE_URL not configured"}
 
     mosaic = {
         "mosaicjson": "0.0.3",
@@ -44,10 +46,3 @@ async def create_mosaic_json(tile_ids: List[str]):
 async def cache_stats():
     """Get statistics about the bounds cache"""
     return get_cache_stats()
-
-
-def get_tile_bounds(tile_id: str):
-    """Get bounds for a WRS2 tile - implement based on your tile naming convention"""
-    # This would map tile_id to actual geographic bounds
-    # Example: Parse path/row from tile_id
-    return [-180, -90, 180, 90]  # Placeholder
