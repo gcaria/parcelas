@@ -1,13 +1,10 @@
-from titiler.application import TilerFactory
-from titiler.mosaic.factory import MosaicTilerFactory
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
+from titiler.core.factory import TilerFactory
+from titiler.mosaic.factory import MosaicTilerFactory
 
-# Initialize app
 app = FastAPI(title="WRS2 COG Mosaic Server")
 
-# Add CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,12 +12,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# COG endpoints
+# 1. Create the COG endpoints (for single TIFs)
 cog = TilerFactory()
-app.include_router(cog.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"])
+app.include_router(cog.router, prefix="/cog", tags=["Single COG"])
 
-# Mosaic endpoints
-mosaic = MosaicTilerFactory()
+# 2. Create the Mosaic endpoints (for your WRS2 mosaicJSON)
+mosaic = MosaicTilerFactory(backend="mosaic")
 app.include_router(mosaic.router, prefix="/mosaic", tags=["Mosaic"])
 
 

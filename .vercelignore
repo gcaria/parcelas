@@ -1,0 +1,59 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose*.yml
+*.dockerfile
+
+# Frontend (deploy separately)
+apps/frontend/
+
+# Data pipeline (development modules)
+data_pipeline/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+*.temp
+
+# Environment files (except production)
+.env.local
+.env.development
+.env.test
+
+# Node modules (if any)
+node_modules/
+
+# Coverage reports
+.coverage
+htmlcov/
+.coverage/
+
+# OS files
+.DS_Store
+Thumbs.db

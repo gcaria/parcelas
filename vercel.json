@@ -1,16 +1,9 @@
 {
   "version": 2,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "apps/backend/main.py"
+      "src": "api/main.py",
+      "use": "@vercel/python"
     }
-  ],
-  "functions": {
-    "apps/backend/main.py": {
-      "runtime": "vercel-python@0.1.0",
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  }
+  ]
 }
