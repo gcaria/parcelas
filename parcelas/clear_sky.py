@@ -33,7 +33,15 @@ def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
 
 
 def compute_clear_sky_percentage(
-    data_ls, clear_sky_qa_flags=[21824, 21826, 21888, 21890, 30048, 54596]
+    data_ls,
+    clear_sky_qa_flags=[
+        21824,  # clear with lows set
+        21826,  # dilated cloud over land
+        21888,  # water with lows set
+        21890,  # dilated cloud over water
+        30048,  # high conf snow/ice
+        54596,  # high conf cirrus
+    ],
 ):
     qa = data_ls["qa_pixel"]
     clear_sky = qa.isin(clear_sky_qa_flags)
