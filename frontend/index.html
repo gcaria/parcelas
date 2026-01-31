@@ -3,57 +3,90 @@
   <head>
     <meta charset="utf-8" />
     <title>TiTiler Mosaic Viewer</title>
-
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-
     <link rel="stylesheet" href="style.css">
-
     <style>
       html, body, #map {
         height: 100%;
         margin: 0;
       }
+
+      /* Colorbar styles */
+      .leaflet-colorbar {
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 6px;
+        padding: 10px 14px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        pointer-events: none; /* don't block map interactions */
+      }
+      .leaflet-colorbar .colorbar-gradient {
+        width: 180px;
+        height: 14px;
+        background: linear-gradient(to right, #1f1a85, #3f6fcf, #e8e8e8, #d45a3a, #7d0c02);
+        border-radius: 3px;
+      }
+      .leaflet-colorbar .colorbar-labels {
+        display: flex;
+        justify-content: space-between;
+        width: 180px;
+        margin-top: 4px;
+        font-size: 11px;
+        font-family: sans-serif;
+        color: #333;
+      }
     </style>
-
   </head>
-
   <body>
     <div id="map"></div>
-
-    <div id="colorbar">
-      <div id="colorbar-gradient"></div>
-      <div id="colorbar-labels">
-        <span>0</span>
-        <span>50</span>
-        <span>100</span>
-      </div>
-    </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script>
-      // Create map
+      // --- Colorbar as a Leaflet Control ---
+      const ColorBar = L.Control.extend({
+        options: {
+          position: 'bottomright'
+        },
+        onAdd: function () {
+          const container = L.DomUtil.create('div', 'leaflet-colorbar');
+
+          const gradient = L.DomUtil.create('div', 'colorbar-gradient');
+          container.appendChild(gradient);
+
+          const labels = L.DomUtil.create('div', 'colorbar-labels');
+          ['0', '50', '100'].forEach(function (val) {
+            const span = document.createElement('span');
+            span.textContent = val;
+            labels.appendChild(span);
+          });
+          container.appendChild(labels);
+
+          return container;
+        }
+      });
+
+      // --- Create map ---
       const map = L.map("map").setView([-39.28, -72.25], 8);
 
-      // Optional basemap
+      // Basemap
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap"
       }).addTo(map);
 
       // TiTiler mosaic tiles
-      const mosaicTiles = L.tileLayer(
-        "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/artifacts/mosaic_uint8.json.gz&rescale=0,100&colormap_name=coolwarm&clamp=true",
+      L.tileLayer(
+          "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png"
+          + "?url=/artifacts/mosaic_uint8.json.gz"
+          + "&rescale=0,100&colormap_name=coolwarm&clamp=true",
         {
           tileSize: 256,
           opacity: 0.8
         }
-      );
+      ).addTo(map);
 
-      mosaicTiles.addTo(map);
+      // Add colorbar control
+      new ColorBar().addTo(map);
     </script>
   </body>
 </html>
-
