@@ -22,6 +22,7 @@
 
   <body>
     <div id="map"></div>
+
     <div id="colorbar">
       <div id="colorbar-gradient"></div>
       <div id="colorbar-labels">
@@ -44,7 +45,7 @@
 
       // TiTiler mosaic tiles
       const mosaicTiles = L.tileLayer(
-        "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/artifacts/mosaic_uint8.json.gz&colormap_name=viridis&clamp=true",
+        "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/artifacts/mosaic_uint8.json.gz&rescale=0,100&colormap_name=coolwarm&clamp=true",
         {
           tileSize: 256,
           opacity: 0.8
@@ -55,3 +56,4 @@
     </script>
   </body>
 </html>
+
