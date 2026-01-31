@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>TiTiler Mosaic Viewer</title>
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <div id="colorbar">
+      <div id="colorbar-gradient"></div>
+      <div id="colorbar-labels">
+        <span>0</span>
+        <span>50</span>
+        <span>100</span>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+      // Create map
+      const map = L.map("map").setView([-39.28, -72.25], 8);
+
+      // Optional basemap
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap"
+      }).addTo(map);
+
+      // TiTiler mosaic tiles
+      const mosaicTiles = L.tileLayer(
+        "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/artifacts/mosaic_uint8.json.gz&colormap_name=viridis&clamp=true",
+        {
+          tileSize: 256,
+          opacity: 0.8
+        }
+      );
+
+      mosaicTiles.addTo(map);
+    </script>
+  </body>
+</html>
