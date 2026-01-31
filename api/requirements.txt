@@ -3,3 +3,5 @@ uvicorn[standard]==0.40.0
 titiler.application==1.1.1
 titiler.mosaic==1.1.1
 python-multipart==0.0.22
+httpx==0.25.1
+

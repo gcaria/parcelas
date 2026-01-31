@@ -1,45 +1,45 @@
-from fastapi import FastAPI
+import os
+
+from cogeo_mosaic.backends import MosaicBackend
+from cogeo_mosaic.mosaic import MosaicJSON
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from titiler.core.factory import TilerFactory
 from titiler.mosaic.factory import MosaicTilerFactory
 
-from .mosaic import router as wrs2_router  # Import your custom router
+os.environ["GS_NO_SIGN_REQUEST"] = "YES"
 
-app = FastAPI(title="WRS2 COG Mosaic Server")
-
+app = FastAPI(title="WRS2 Mosaic Server")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=["http://localhost:3001", "http://localhost:3000"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# 1. Create the COG endpoints (for single TIFs)
-cog = TilerFactory()
-app.include_router(cog.router, prefix="/cog", tags=["Single COG"])
 
-# 2. Create the Mosaic endpoints (for WRS2 mosaicJSON)
-mosaic = MosaicTilerFactory(backend="mosaic")
-app.include_router(mosaic.router, prefix="/mosaic", tags=["Mosaic"])
+@app.post("/mosaicjson/generate")
+def generate_mosaic(tile_ids: str):
+    COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
+    if not COG_BASE_URL:
+        return {"error": "COG_STORAGE_URL not configured"}
+    if not tile_ids:
+        raise HTTPException(status_code=400, detail="No tile_ids provided")
 
-# 3. Include custom WRS2 endpoints with different prefix
-app.include_router(wrs2_router, prefix="/api/wrs2", tags=["WRS2 Mosaic"])
+    tile_ids_list = [t.strip() for t in tile_ids.split(",")]
+    cog_urls = [f"{COG_BASE_URL}/{tile_id}.tif" for tile_id in tile_ids_list]
+
+    # Generate and return the full mosaic JSON
+    mosaic_json = MosaicJSON.from_urls(cog_urls)
+
+    # Return as dict
+    return mosaic_json.model_dump()
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "WRS2 COG Mosaic Server",
-        "endpoints": {
-            "docs": "/docs",
-            "health": "/health",
-            "cog": "/cog",
-            "mosaic": "/mosaic",
-            "wrs2": "/api/wrs2",
-        },
-    }
+mosaic = MosaicTilerFactory(backend=MosaicBackend, router_prefix="/mosaicjson")
+app.include_router(mosaic.router, prefix="/mosaicjson")
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {"status": "ok"}

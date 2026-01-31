@@ -75,3 +75,7 @@ Thumbs.db
 .pyright/
 .dmypy.json
 
+
+frontend/config.js
+frontend/.env
+frontend/.env.local
