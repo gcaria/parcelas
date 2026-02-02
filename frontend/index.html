@@ -74,9 +74,15 @@
         attribution: "© OpenStreetMap"
       }).addTo(map);
 
+      // Detect environment
+      const API_BASE_URL = window.location.hostname === 'localhost' 
+        ? 'http://localhost:8080'
+        : 'https://parcelas-api-228350087170.us-central1.run.app';
+
+
       // TiTiler mosaic tiles
       L.tileLayer(
-          "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png"
+          `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
           + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
           + "&rescale=0,100&colormap_name=coolwarm&clamp=true",
         {
