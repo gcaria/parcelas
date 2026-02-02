@@ -22,7 +22,11 @@ app.add_middleware(
 
 
 @app.post("/mosaicjson/generate")
-def generate_mosaic(tile_ids: Optional[str] = None):
+def generate_mosaic(
+    tile_ids: Optional[str] = None,
+    save_to_gcs: bool = False,
+    gcs_path: Optional[str] = None,
+):
 
     COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
     if not COG_BASE_URL:
@@ -33,10 +37,18 @@ def generate_mosaic(tile_ids: Optional[str] = None):
         cog_urls = [f"gs://{f}" for f in files]
     else:
         tile_ids_list = [t.strip() for t in tile_ids.split(",")]
-        cog_urls = [f"{COG_BASE_URL}/{tile_id}_uint8.tif" for tile_id in tile_ids_list]
+        cog_urls = [f"{COG_BASE_URL}/{t}_uint8.tif" for t in tile_ids_list]
 
-    # Generate and return the full mosaic JSON
     mosaic_json = MosaicJSON.from_urls(cog_urls)
+
+    if save_to_gcs:
+        if not gcs_path:
+            gcs_path = f"{COG_BASE_URL}/mosaics/mosaic_uint8.json.gz"
+
+        with fs.open(gcs_path, "w") as f:
+            f.write(mosaic_json.model_dump_json(indent=2))
+
+        return {"mosaic": mosaic_json.model_dump(), "saved_to": gcs_path}
 
     # Return as dict
     return mosaic_json.model_dump()
