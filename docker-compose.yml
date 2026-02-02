@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  api-service:
+    build: .
+    # Mounts the current directory to /app inside the container for live-reloading
+    volumes:
+      - .:/app
+      # Securely mount the GCP key from host to the container
+      - ./parcelas-api-ba83a3b79c29.json:/secrets/gcp-key.json:ro
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
+      - COG_STORAGE_URL=gs://parcelas-wrs2
+      - PORT=8080
+      - PYTHONAPP=/app
+      # Ensures Python logs show up immediately in terminal
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"

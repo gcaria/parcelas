@@ -1,0 +1,21 @@
+# Security: Never include GCP keys
+service-account-dev.json
+*.json
+!package.json
+!composer.json
+
+# Version Control
+.git
+.gitignore
+
+# Environment files
+.env
+
+# Dependencies (Let Docker install these inside the container)
+node_modules/
+vendor/
+__pycache__/
+
+# Logs and OS files
+*.log
+.DS_Store
