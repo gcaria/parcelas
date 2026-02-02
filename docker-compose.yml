@@ -11,9 +11,9 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
       - COG_STORAGE_URL=gs://parcelas-wrs2
-      - PORT=8080
       - PYTHONAPP=/app
       # Ensures Python logs show up immediately in terminal
       - PYTHONUNBUFFERED=1
     ports:
       - "8080:8080"
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8080 --reload
