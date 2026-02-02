@@ -13,14 +13,13 @@
         height: 100%;
         margin: 0;
       }
-
       /* Colorbar styles */
       .leaflet-colorbar {
         background: rgba(255, 255, 255, 0.85);
         border-radius: 6px;
         padding: 10px 14px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        pointer-events: none; /* don't block map interactions */
+        pointer-events: none;
       }
       .leaflet-colorbar .colorbar-gradient {
         width: 180px;
@@ -37,12 +36,98 @@
         font-family: sans-serif;
         color: #333;
       }
+      /* Debug panel */
+      #debug {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: #0f0;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        max-width: 400px;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none; /* Hidden by default, toggle with '?' key */
+      }
+      #debug.visible {
+        display: block;
+      }
+      #debug .error {
+        color: #f00;
+      }
+      #debug .success {
+        color: #0f0;
+      }
+      #debug .info {
+        color: #0ff;
+      }
     </style>
   </head>
   <body>
     <div id="map"></div>
+    <div id="debug">
+      <strong>Debug Log (Press '?' to toggle)</strong>
+      <div id="debug-content"></div>
+    </div>
+    
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+      // --- Debug Logger ---
+      const debugLog = (msg, type = 'info') => {
+        console.log(`[${type.toUpperCase()}]`, msg);
+        const debugContent = document.getElementById('debug-content');
+        const timestamp = new Date().toLocaleTimeString();
+        const line = document.createElement('div');
+        line.className = type;
+        line.textContent = `[${timestamp}] ${msg}`;
+        debugContent.appendChild(line);
+        debugContent.scrollTop = debugContent.scrollHeight;
+      };
+
+      // Toggle debug panel with '?' key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === '?') {
+          document.getElementById('debug').classList.toggle('visible');
+        }
+      });
+
+      // Detect environment
+      const isLocal = window.location.hostname === 'localhost' 
+        || window.location.hostname === '127.0.0.1';
+      
+      const API_BASE_URL = isLocal
+        ? 'http://localhost:8080'
+        : 'https://parcelas-api-228350087170.us-central1.run.app';
+
+      debugLog(`Environment: ${isLocal ? 'LOCAL' : 'PRODUCTION'}`, 'info');
+      debugLog(`API Base URL: ${API_BASE_URL}`, 'info');
+      debugLog(`Hostname: ${window.location.hostname}`, 'info');
+
+      // Test API connectivity
+      const testAPI = async () => {
+        debugLog('Testing API connectivity...', 'info');
+        try {
+          const response = await fetch(`${API_BASE_URL}/health`);
+          if (response.ok) {
+            const data = await response.json();
+            debugLog(`API health check: ${JSON.stringify(data)}`, 'success');
+          } else {
+            debugLog(`API health check failed: ${response.status} ${response.statusText}`, 'error');
+          }
+        } catch (err) {
+          debugLog(`API health check error: ${err.message}`, 'error');
+          if (err.message.includes('blocked')) {
+            debugLog('Request may be blocked by ad blocker or CORS', 'error');
+          }
+        }
+      };
+
+      testAPI();
+
       // --- Colorbar as a Leaflet Control ---
       const ColorBar = L.Control.extend({
         options: {
@@ -50,10 +135,8 @@
         },
         onAdd: function () {
           const container = L.DomUtil.create('div', 'leaflet-colorbar');
-
           const gradient = L.DomUtil.create('div', 'colorbar-gradient');
           container.appendChild(gradient);
-
           const labels = L.DomUtil.create('div', 'colorbar-labels');
           ['0', '50', '100'].forEach(function (val) {
             const span = document.createElement('span');
@@ -61,38 +144,75 @@
             labels.appendChild(span);
           });
           container.appendChild(labels);
-
           return container;
         }
       });
 
       // --- Create map ---
+      debugLog('Initializing map...', 'info');
       const map = L.map("map").setView([-39.28, -72.25], 8);
 
       // Basemap
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      debugLog('Adding basemap layer...', 'info');
+      const basemap = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap"
       }).addTo(map);
 
-      // Detect environment
-      const API_BASE_URL = window.location.hostname === 'localhost' 
-        ? 'http://localhost:8080'
-        : 'https://parcelas-api-228350087170.us-central1.run.app';
-
+      basemap.on('load', () => debugLog('Basemap loaded successfully', 'success'));
+      basemap.on('tileerror', (e) => debugLog(`Basemap tile error: ${e.tile.src}`, 'error'));
 
       // TiTiler mosaic tiles
-      L.tileLayer(
-          `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
-          + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
-          + "&rescale=0,100&colormap_name=coolwarm&clamp=true",
-        {
-          tileSize: 256,
-          opacity: 0.8
-        }
-      ).addTo(map);
+      const tileUrl = `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
+        + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
+        + "&rescale=0,100&colormap_name=coolwarm&clamp=true";
+      
+      debugLog(`Tile URL template: ${tileUrl}`, 'info');
+
+      const mosaicLayer = L.tileLayer(tileUrl, {
+        tileSize: 256,
+        opacity: 0.8
+      }).addTo(map);
+
+      // Track tile loading
+      let tilesLoaded = 0;
+      let tilesErrored = 0;
+
+      mosaicLayer.on('tileloadstart', (e) => {
+        debugLog(`Loading tile: ${e.url}`, 'info');
+      });
+
+      mosaicLayer.on('tileload', (e) => {
+        tilesLoaded++;
+        debugLog(`Tile loaded successfully (${tilesLoaded} total)`, 'success');
+      });
+
+      mosaicLayer.on('tileerror', (e) => {
+        tilesErrored++;
+        debugLog(`Tile error (${tilesErrored} total): ${e.tile.src}`, 'error');
+        debugLog(`Error coords: z=${e.coords.z}, x=${e.coords.x}, y=${e.coords.y}`, 'error');
+      });
+
+      mosaicLayer.on('loading', () => debugLog('Mosaic layer loading...', 'info'));
+      mosaicLayer.on('load', () => debugLog('Mosaic layer load complete', 'success'));
 
       // Add colorbar control
+      debugLog('Adding colorbar control...', 'info');
       new ColorBar().addTo(map);
+
+      // Log map events
+      map.on('zoomend', () => debugLog(`Zoom level: ${map.getZoom()}`, 'info'));
+      map.on('moveend', () => {
+        const center = map.getCenter();
+        debugLog(`Map center: [${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}]`, 'info');
+      });
+
+      // Catch global errors
+      window.addEventListener('error', (e) => {
+        debugLog(`Global error: ${e.message}`, 'error');
+      });
+
+      debugLog('Map initialization complete', 'success');
+      debugLog('Press ? to toggle this debug panel', 'info');
     </script>
   </body>
 </html>
