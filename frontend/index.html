@@ -77,7 +77,7 @@
       // TiTiler mosaic tiles
       L.tileLayer(
           "http://localhost:8080/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png"
-          + "?url=/artifacts/mosaic_uint8.json.gz"
+          + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
           + "&rescale=0,100&colormap_name=coolwarm&clamp=true",
         {
           tileSize: 256,
