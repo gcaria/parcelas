@@ -2,6 +2,9 @@
 
 Estimates the percentage of yearly sunny days across Chile by processing Landsat 8 & 9 satellite imagery.
 
+## Live Demo
+
+🌐 [View on GitHub Pages](https://gcaria.github.io/parcelas/)
 ## Stack
 
 - **Processing** — Python (xarray) for Landsat 8/9 cloud/shadow classification and sunny-day aggregation
