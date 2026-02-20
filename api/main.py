@@ -13,13 +13,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from titiler.core.factory import TilerFactory
 from titiler.mosaic.factory import MosaicTilerFactory
 
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", "http://localhost:3001"  # default for local dev only
+).split(",")
+
 os.environ["GS_NO_SIGN_REQUEST"] = "YES"
+
 fs = gcsfs.GCSFileSystem()
 
 app = FastAPI(title="WRS2 Mosaic Server")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001", "https://gcaria.github.io"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )

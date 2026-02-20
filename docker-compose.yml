@@ -12,6 +12,7 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
       - COG_STORAGE_URL=gs://parcelas-wrs2
       - PYTHONAPP=/app
+      - ALLOWED_ORIGINS=http://localhost:3001
       # Ensures Python logs show up immediately in terminal
       - PYTHONUNBUFFERED=1
     ports:
