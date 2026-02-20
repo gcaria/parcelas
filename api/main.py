@@ -36,6 +36,32 @@ RATE_LIMIT = 100  # requests
 RATE_WINDOW = 60  # seconds
 
 
+import os
+import secrets
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+API_KEY = os.getenv("API_KEY")
+PUBLIC_PATHS = {"/health"}
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+
+    # Check header first, then fall back to query param
+    key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+
+    if not key or not secrets.compare_digest(key, API_KEY):
+        return JSONResponse(
+            status_code=401, content={"detail": "Invalid or missing API key"}
+        )
+
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     client_ip = request.client.host

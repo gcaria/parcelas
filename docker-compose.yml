@@ -6,6 +6,7 @@ services:
       - .:/app
       - ${GCP_KEY_PATH}:/secrets/gcp-key.json:ro
     environment:
+      - API_KEY=${API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
       - COG_STORAGE_URL=${COG_STORAGE_URL}
       - PYTHONAPP=/app

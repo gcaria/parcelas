@@ -75,6 +75,7 @@
     </div>
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="config.js"></script>
     <script>
       // --- Debug Logger ---
       const debugLog = (msg, type = 'info') => {
@@ -164,7 +165,8 @@
       // TiTiler mosaic tiles
       const tileUrl = `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
         + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
-        + "&rescale=0,100&colormap_name=coolwarm&clamp=true";
+        + "&rescale=0,100&colormap_name=coolwarm&clamp=true"
+        + `&api_key=${API_KEY}`;
       
       debugLog(`Tile URL template: ${tileUrl}`, 'info');
 
