@@ -67,6 +67,8 @@ Thumbs.db
 .env.*
 *.key
 *.pem
+parcelas-api-*.json
+*.json.secret
 
 # ----------------------
 # Type checking
