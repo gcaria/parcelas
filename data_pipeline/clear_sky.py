@@ -4,6 +4,8 @@ import odc.stac
 import planetary_computer
 import pystac_client
 
+from data_pipeline.shapefiles import get_wrs2_tiles
+
 CLEAR_SKY_QA_FLAGS = [
     21824,  # clear with lows set
     21826,  # dilated cloud over land
@@ -47,3 +49,21 @@ def compute_clear_sky_percentage(data_ls, clear_sky_qa_flags=CLEAR_SKY_QA_FLAGS)
     _sum = clear_sky.astype(int).sum(dim="time")
 
     return _sum / len(qa.time)
+
+
+def store_clear_sky_percentage(
+    da_csp, path, row, output_template="{path:03d}_{row:03d}.tif"
+):
+    da_csp = (da_csp.where(da > 0) * 100).fillna(0)
+    da_csp = da_csp.astype("uint8").rio.write_nodata(0)
+
+    poly = get_wrs2_tiles(path, row)
+    poly = poly.to_crs(da_csp.rio.crs).geometry.iloc[0].simplify(tolerance=1000)
+    poly = poly.buffer(-300)
+
+    da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
+
+    fname = output_template.format(path=path, row=row)
+    da_csp.rio.to_raster(fname, driver="COG")
+
+    logging.info(f"Clear sky percentage stored at {fname}")
