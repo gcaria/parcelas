@@ -83,33 +83,29 @@ def generate_mosaic(
     tile_ids: Optional[str] = None,
     save_to_gcs: bool = False,
     gcs_path: Optional[str] = None,
+    glob_pattern: str = "uint8",
 ):
-
     COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
     if not COG_BASE_URL:
         return {"error": "COG_STORAGE_URL not configured"}
 
     if not tile_ids:
-        files = fs.glob(f"{COG_BASE_URL}/*_uint8.tif")
+        files = fs.glob(f"{COG_BASE_URL}/*_{glob_pattern}.tif")
         cog_urls = [f"gs://{f}" for f in files]
     else:
         tile_ids_list = [t.strip() for t in tile_ids.split(",")]
-        cog_urls = [f"{COG_BASE_URL}/{t}_uint8.tif" for t in tile_ids_list]
+        cog_urls = [f"{COG_BASE_URL}/{t}_{glob_pattern}.tif" for t in tile_ids_list]
 
     mosaic_json = MosaicJSON.from_urls(cog_urls)
 
     if save_to_gcs:
         if not gcs_path:
-            gcs_path = f"{COG_BASE_URL}/mosaics/mosaic_uint8.json.gz"
-
+            gcs_path = f"{COG_BASE_URL}/mosaics/mosaic_{glob_pattern}.json.gz"
         json_str = mosaic_json.model_dump_json(indent=2)
         compressed_data = gzip.compress(json_str.encode("utf-8"))
-
-        # Write to GCS with proper error handling
         try:
             with fs.open(gcs_path, "wb") as f:
                 f.write(compressed_data)
-
             return {
                 "status": "success",
                 "mosaic": mosaic_json.model_dump(),
@@ -118,7 +114,6 @@ def generate_mosaic(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
 
-    # Return as dict
     return mosaic_json.model_dump()
 
 

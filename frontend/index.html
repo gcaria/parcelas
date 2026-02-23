@@ -164,7 +164,7 @@
 
       // TiTiler mosaic tiles
       const tileUrl = `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
-        + "?url=gs://parcelas-wrs2/mosaics/mosaic_uint8.json.gz"
+        + "?url=gs://parcelas-wrs2/mosaics/mosaic_clipped.json.gz"
         + "&rescale=0,100&colormap_name=coolwarm&clamp=true"
         + `&api_key=${API_KEY}`;
       
