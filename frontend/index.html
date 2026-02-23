@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Parcelas - Chile's Yearly Sunny Percentage</title>
+    <title>Parcelas - Chile's Yearly Clear Sky Percentage</title>
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -136,8 +136,15 @@
         },
         onAdd: function () {
           const container = L.DomUtil.create('div', 'leaflet-colorbar');
+
+          const title = L.DomUtil.create('div', 'colorbar-title');
+          title.textContent = 'Clear Sky Days (%)';
+          title.style.cssText = 'font-size:12px; font-family:sans-serif; color:#333; margin-bottom:5px; font-weight:bold; text-align:center; width:180px;';
+          container.appendChild(title);
+
           const gradient = L.DomUtil.create('div', 'colorbar-gradient');
           container.appendChild(gradient);
+
           const labels = L.DomUtil.create('div', 'colorbar-labels');
           ['0', '50', '100'].forEach(function (val) {
             const span = document.createElement('span');
