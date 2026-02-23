@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container: python:3.11-slim
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +24,13 @@ jobs:
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install system dependencies
+        run: |
+          apt-get update && apt-get install -y \
+          gcc \
+          g++ \
+          libgdal-dev
 
       - name: Install dependencies
         run: |
