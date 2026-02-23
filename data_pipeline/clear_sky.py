@@ -4,6 +4,15 @@ import odc.stac
 import planetary_computer
 import pystac_client
 
+CLEAR_SKY_QA_FLAGS = [
+    21824,  # clear with lows set
+    21826,  # dilated cloud over land
+    21888,  # water with lows set
+    21890,  # dilated cloud over water
+    30048,  # high conf snow/ice
+    54596,  # high conf cirrus
+]
+
 
 def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]):
     catalog = pystac_client.Client.open(
@@ -32,17 +41,7 @@ def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
     )
 
 
-def compute_clear_sky_percentage(
-    data_ls,
-    clear_sky_qa_flags=[
-        21824,  # clear with lows set
-        21826,  # dilated cloud over land
-        21888,  # water with lows set
-        21890,  # dilated cloud over water
-        30048,  # high conf snow/ice
-        54596,  # high conf cirrus
-    ],
-):
+def compute_clear_sky_percentage(data_ls, clear_sky_qa_flags=CLEAR_SKY_QA_FLAGS):
     qa = data_ls["qa_pixel"]
     clear_sky = qa.isin(clear_sky_qa_flags)
     _sum = clear_sky.astype(int).sum(dim="time")
