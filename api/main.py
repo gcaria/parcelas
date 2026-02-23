@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+import secrets
 import time
 from collections import defaultdict
 from typing import Optional
@@ -10,9 +11,14 @@ from cogeo_mosaic.backends import MosaicBackend
 from cogeo_mosaic.mosaic import MosaicJSON
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from titiler.core.factory import TilerFactory
 from titiler.mosaic.factory import MosaicTilerFactory
 
+RATE_LIMIT = 100  # requests
+RATE_WINDOW = 60  # seconds
+API_KEY = os.getenv("API_KEY")
+PUBLIC_PATHS = {"/health"}
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS", "http://localhost:3001"  # default for local dev only
 ).split(",")
@@ -30,22 +36,6 @@ app.add_middleware(
 )
 
 
-# Simple in-memory rate limiter
-rate_limit_storage = defaultdict(list)
-RATE_LIMIT = 100  # requests
-RATE_WINDOW = 60  # seconds
-
-
-import os
-import secrets
-
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-API_KEY = os.getenv("API_KEY")
-PUBLIC_PATHS = {"/health"}
-
-
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     if request.url.path in PUBLIC_PATHS:
@@ -60,6 +50,10 @@ async def api_key_middleware(request: Request, call_next):
         )
 
     return await call_next(request)
+
+
+# Simple in-memory rate limiter
+rate_limit_storage = defaultdict(list)
 
 
 @app.middleware("http")
