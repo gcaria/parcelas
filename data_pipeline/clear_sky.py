@@ -31,14 +31,11 @@ def get_landsat_data(
         query={
             "landsat:wrs_path": {"eq": f"{path:03d}"},
             "landsat:wrs_row": {"eq": f"{row:03d}"},
+            "platform": {"in": ["landsat-8", "landsat-9"]},
         },
     )
 
     items = search.item_collection()
-
-    # Get rid of L7 data
-    items = [i for i in items if "7" not in i.properties["platform"]]
-    logging.info(f"Found {len(items)} Items")
 
     return odc.stac.stac_load(
         items,
