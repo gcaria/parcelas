@@ -15,6 +15,7 @@ CLEAR_SKY_QA_FLAGS = [
     30048,  # high conf snow/ice
     54596,  # high conf cirrus
 ]
+PLANETARY_COMPUTER_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
 def get_landsat_data(
@@ -39,7 +40,7 @@ def get_landsat_data(
     """
 
     catalog = pystac_client.Client.open(
-        "https://planetarycomputer.microsoft.com/api/stac/v1",
+        PLANETARY_COMPUTER_CATALOG_URL,
         modifier=planetary_computer.sign_inplace,
     )
 
@@ -116,3 +117,42 @@ def store_clear_sky_percentage(
     da_csp.rio.to_raster(fname, driver="COG")
 
     logging.info(f"Clear sky percentage stored at {fname}")
+
+
+def get_jrc_surface_water(
+    shp: "geopandas.GeoDataFrame",
+    bands: list = ["occurrence", "seasonality", "recurrence"],
+    chunks: dict = {"x": 512, "y": 512},
+) -> "xarray.Dataset":
+    """Fetches JRC Global Surface Water data from the Microsoft Planetary
+    Computer for a specified area of interest, and returns it as an xarray
+    Dataset.
+
+    Args:
+        shp: A GeoDataFrame containing the geometry of the area of interest.
+        bands: A list of band names to fetch.
+        chunks: A dictionary specifying the chunk sizes for the xarray Dataset.
+
+    Returns:
+        An xarray Dataset containing the requested JRC Global Surface Water data.
+    """
+
+    catalog = pystac_client.Client.open(
+        PLANETARY_COMPUTER_CATALOG_URL,
+        modifier=planetary_computer.sign_inplace,
+    )
+
+    search = catalog.search(
+        collections=["jrc-gsw"],
+        intersects=shp.union_all(),
+    )
+
+    items = search.item_collection()
+    logging.info(f"Found {len(items)} JRC items")
+
+    return odc.stac.stac_load(
+        items,
+        bands=bands,
+        intersects=shp.union_all(),
+        chunks=chunks,
+    )
