@@ -1,10 +1,8 @@
 name: Deploy to GitHub Pages
-
 on:
   push:
     branches: [ main ]
 
-# Required permissions
 permissions:
   contents: read
   pages: write
@@ -18,15 +16,20 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Inject secrets into config
+        run: |
+          sed -i "s|REPLACE_ME_KEY|${{ secrets.API_KEY }}|g" frontend/config.js.example
+          mv frontend/config.js.example frontend/config.js
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
-        
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './frontend'
-          
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
