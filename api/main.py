@@ -12,7 +12,6 @@ from cogeo_mosaic.mosaic import MosaicJSON
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from titiler.core.factory import TilerFactory
 from titiler.mosaic.factory import MosaicTilerFactory
 
 RATE_LIMIT = 100  # requests
@@ -119,7 +118,7 @@ def generate_mosaic(
 
 @app.get("/mosaicjson/validate")
 def validate_mosaic(gcs_path: str):
-    """Validate a mosaic JSON file"""
+    """Validate a mosaic JSON file."""
     try:
         with fs.open(gcs_path, "rb") as f:
             data = f.read()
