@@ -15,7 +15,19 @@ def get_wrs2_grid():
     return gpd.read_file(URL_WRS2_GRID)
 
 
-def download_wrs2_grid(output_file="wrs2_descending.geojson"):
+def download_wrs2_grid(output_file: str = "wrs2_descending.geojson") -> None:
+    """Downloads the WRS-2 grid from the USGS and saves it as a GeoJSON file.
+    If the file already exists, it will skip the download.
+
+    Args:
+        output_file: The name of the output GeoJSON file. Default is "wrs2_descending.geojson".
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the downloaded file is not a valid zip or if a .shp file cannot be found in the zip.
+    """
 
     if os.path.exists(output_file):
         print(f"WRS-2 grid already exists at {output_file}.")
@@ -52,7 +64,16 @@ def download_wrs2_grid(output_file="wrs2_descending.geojson"):
         raise ValueError("Could not find a .shp file in the zip.")
 
 
-def get_chile_boundary(output_file="chile.geojson"):
+def get_chile_boundary(output_file: str = "chile.geojson") -> gpd.GeoDataFrame:
+    """Downloads the boundary of Chile from Natural Earth and saves it as a
+    GeoJSON file.
+
+    Args:
+        output_file: The name of the output GeoJSON file. Default is "chile.geojson".
+
+    Returns:
+        A GeoDataFrame containing the boundary of Chile.
+    """
 
     world = gpd.read_file(
         "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries.zip"
@@ -63,7 +84,16 @@ def get_chile_boundary(output_file="chile.geojson"):
     return chile
 
 
-def get_chile_wrs2_tiles():
+def get_chile_wrs2_tiles() -> gpd.GeoDataFrame:
+    """Returns a GeoDataFrame containing the WRS-2 tiles that intersect with
+    the boundary of Chile.
+
+    Args:
+        None
+
+    Returns:
+        A GeoDataFrame containing the WRS-2 tiles that intersect with the boundary of Chile.
+    """
 
     wrs2_tiles = get_wrs2_grid()
     chile_boundary = get_chile_boundary()
@@ -71,6 +101,17 @@ def get_chile_wrs2_tiles():
     return wrs2_tiles[intersects]
 
 
-def get_wrs2_tiles(path, row):
+def get_wrs2_tile(path: int, row: int) -> gpd.GeoDataFrame:
+    """Returns a GeoDataFrame containing the WRS-2 tile that corresponds to the
+    given path and row.
+
+    Args:
+        path: The WRS-2 path number.
+        row: The WRS-2 row number.
+
+    Returns:
+        A GeoDataFrame containing the WRS-2 tile that corresponds to the given path and row.
+    """
+
     wrs2_tiles = get_wrs2_grid()
     return wrs2_tiles[(wrs2_tiles["PATH"] == path) & (wrs2_tiles["ROW"] == row)]
