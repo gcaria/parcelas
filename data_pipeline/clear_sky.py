@@ -16,7 +16,9 @@ CLEAR_SKY_QA_FLAGS = [
 ]
 
 
-def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]):
+def get_landsat_data(
+    shp, path, row, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
+):
     catalog = pystac_client.Client.open(
         "https://planetarycomputer.microsoft.com/api/stac/v1",
         modifier=planetary_computer.sign_inplace,
@@ -26,6 +28,10 @@ def get_landsat_data(shp, time_range="2020-01-01/2020-12-31", bands=["qa_pixel"]
         collections=["landsat-c2-l2"],
         intersects=shp.union_all(),
         datetime=time_range,
+        query={
+            "landsat:wrs_path": {"eq": f"{path:03d}"},
+            "landsat:wrs_row": {"eq": f"{row:03d}"},
+        },
     )
 
     items = search.item_collection()
