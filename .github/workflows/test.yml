@@ -39,3 +39,5 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --cov=data_pipeline --cov-report=term-missing
+        env:
+          PYTHONPATH: .
