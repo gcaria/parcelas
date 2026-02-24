@@ -57,6 +57,9 @@ rate_limit_storage = defaultdict(list)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+
     client_ip = request.client.host
     now = time.time()
 
