@@ -7,37 +7,55 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test-data-pipeline:
     runs-on: ubuntu-latest
     container: python:3.11-slim
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ${{ runner.os }}-pip-pipeline-${{ hashFiles('requirements.txt') }}
+
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y libgdal-dev gdal-bin libspatialindex-dev --no-install-recommends
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov
+
+      - name: Run tests
+        run: pytest tests/test_shapefiles.py -v --cov=data_pipeline
+        env:
+          PYTHONPATH: .
+
+  test-api:
+    runs-on: ubuntu-latest
+    container: python:3.11-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-api-${{ hashFiles('api/requirements.txt') }}
 
       - name: Install system dependencies
         run: |
           apt-get update && apt-get install -y \
-          gcc \
-          g++ \
-          libgdal-dev
+            libexpat1 \
+            libgdal-dev \
+            gdal-bin \
+            --no-install-recommends
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
+        run: pip install -r api/requirements.txt pytest pytest-cov httpx
 
       - name: Run tests
-        run: pytest tests/ -v --cov=data_pipeline --cov-report=term-missing
+        run: pytest tests/test_api.py -v --cov=api
         env:
           PYTHONPATH: .
+          API_KEY: test-key
+
