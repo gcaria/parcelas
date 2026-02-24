@@ -69,14 +69,9 @@ async def rate_limit_middleware(request: Request, call_next):
         for req_time in rate_limit_storage[client_ip]
         if now - req_time < RATE_WINDOW
     ]
-
-    # Check rate limit
     if len(rate_limit_storage[client_ip]) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    # Record request
+        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
     rate_limit_storage[client_ip].append(now)
-
     return await call_next(request)
 
 
