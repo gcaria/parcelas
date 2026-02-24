@@ -1,8 +1,19 @@
-from fastapi.testclient import TestClient
 from unittest.mock import patch
-from api.main import app
+
+import pytest
+from fastapi.testclient import TestClient
+
+from api.main import app, rate_limit_storage
 
 client = TestClient(app)
+
+
+# clears the in-memory store before each test
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    rate_limit_storage.clear()
+    yield
+    rate_limit_storage.clear()
 
 
 def test_health():
@@ -33,7 +44,13 @@ def test_generate_missing_cog_storage_url():
 
 
 def test_rate_limit():
+
     for _ in range(100):
-        client.get("/health")
-    response = client.get("/health")
+        client.get(
+            "/mosaicjson/validate?gcs_path=gs://anything",
+            headers={"X-API-Key": "test-key"},
+        )
+    response = client.get(
+        "/mosaicjson/validate?gcs_path=gs://anything", headers={"X-API-Key": "test-key"}
+    )
     assert response.status_code == 429
