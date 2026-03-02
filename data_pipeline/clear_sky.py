@@ -67,6 +67,9 @@ def get_landsat_data(
     )
 
     items = search.item_collection()
+    logging.info(
+        f"Found {len(items)} Landsat items for path {path}/ row {row} in time range {time_range}"
+    )
 
     da_ls = odc.stac.stac_load(
         items,
@@ -127,7 +130,7 @@ def store_clear_sky_percentage(
 
     poly = get_wrs2_tile(path, row)
     poly = poly.to_crs(da_csp.rio.crs).geometry.iloc[0].simplify(tolerance=1000)
-    poly = poly.buffer(-300)
+    poly = poly.buffer(-500)
 
     da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
 
