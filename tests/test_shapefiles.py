@@ -17,6 +17,7 @@ from data_pipeline.shapefiles import (
 
 # --- Fixtures ---
 
+
 @pytest.fixture
 def mock_wrs2_gdf():
     return gpd.GeoDataFrame(
@@ -24,6 +25,7 @@ def mock_wrs2_gdf():
         geometry=[box(-72, -39, -71, -38), box(-72, -40, -71, -39)],
         crs="EPSG:4326",
     )
+
 
 @pytest.fixture
 def mock_chile_gdf():
@@ -33,7 +35,9 @@ def mock_chile_gdf():
         crs="EPSG:4326",
     )
 
+
 # --- Tests ---
+
 
 def test_get_wrs2_grid(mock_wrs2_gdf):
     with patch("data_pipeline.shapefiles.gpd.read_file", return_value=mock_wrs2_gdf):
@@ -67,8 +71,12 @@ def test_get_chile_boundary(mock_chile_gdf, tmp_path):
 
 
 def test_get_chile_wrs2_tiles(mock_wrs2_gdf, mock_chile_gdf):
-    with patch("data_pipeline.shapefiles.get_wrs2_grid", return_value=mock_wrs2_gdf), \
-         patch("data_pipeline.shapefiles.get_chile_boundary", return_value=mock_chile_gdf):
+    with (
+        patch("data_pipeline.shapefiles.get_wrs2_grid", return_value=mock_wrs2_gdf),
+        patch(
+            "data_pipeline.shapefiles.get_chile_boundary", return_value=mock_chile_gdf
+        ),
+    ):
         result = get_chile_wrs2_tiles()
         assert isinstance(result, gpd.GeoDataFrame)
         assert len(result) > 0

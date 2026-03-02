@@ -1,5 +1,34 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "I",   # isort
+  "D1",   # pydocstyle
+]
+ignore = [
+    "E501",  # line-too-long (formatter handles it better)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]
+"__init__.py" = ["D104"]
+"api/main.py" = ["D100"]
+
+[tool.docformatter]
+wrap-summaries = 88
+wrap-descriptions = 88
+pre-summary-newline = true      # blank line before multi-line summary
+close-quotes-on-newline = true  # Google style puts closing """ on new line
+force-period-at-end = false
+
+[tool.mypy]
+ignore_missing_imports = true  # silences ALL untyped library warnings

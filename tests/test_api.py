@@ -44,7 +44,6 @@ def test_generate_missing_cog_storage_url():
 
 
 def test_rate_limit():
-
     for _ in range(100):
         client.get(
             "/mosaicjson/validate?gcs_path=gs://anything",

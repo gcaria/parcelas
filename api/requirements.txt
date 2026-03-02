@@ -4,4 +4,3 @@ titiler.application==1.1.1
 titiler.mosaic==1.1.1
 python-multipart==0.0.22
 gcsfs==2026.1.0
-

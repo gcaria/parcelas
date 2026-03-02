@@ -1,9 +1,15 @@
+"""This module contains functions for fetching Landsat 8 and 9 data from the Microsoft
+Planetary Computer, computing the percentage of clear sky pixels.
+"""
+
 import logging
 from typing import List
 
+import geopandas
 import odc.stac
 import planetary_computer
 import pystac_client
+import xarray
 
 from data_pipeline.shapefiles import get_wrs2_tile
 
@@ -25,8 +31,9 @@ def get_landsat_data(
     time_range: str = "2020-01-01/2020-12-31",
     bands: List[str] = ["qa_pixel"],
 ) -> "xarray.Dataset":
-    """Fetches Landsat 8 and 9 data from the Microsoft Planetary Computer for a
-    specified WRS-2 tile and time range, and returns it as an xarray Dataset.
+    """
+    Fetches Landsat 8 and 9 data from the Microsoft Planetary Computer for a specified
+    WRS-2 tile and time range, and returns it as an xarray Dataset.
 
     Args:
         shp: A GeoDataFrame containing the geometry of the area of interest.
@@ -38,7 +45,6 @@ def get_landsat_data(
     Returns:
         An xarray Dataset containing the requested Landsat data.
     """
-
     catalog = pystac_client.Client.open(
         PLANETARY_COMPUTER_CATALOG_URL,
         modifier=planetary_computer.sign_inplace,
@@ -69,8 +75,9 @@ def get_landsat_data(
 def compute_clear_sky_percentage(
     data_ls: "xarray.Dataset", clear_sky_qa_flags: List[int] = CLEAR_SKY_QA_FLAGS
 ) -> "xarray.DataArray":
-    """Computes the percentage of clear sky pixels in a given xarray Dataset
-    containing Landsat data.
+    """
+    Computes the percentage of clear sky pixels in a given xarray Dataset containing
+    Landsat data.
 
     Args:
         data_ls: An xarray Dataset containing the Landsat data, with a "qa_pixel" variable.
@@ -92,8 +99,8 @@ def store_clear_sky_percentage(
     row: int,
     output_template: str = "{path:03d}_{row:03d}.tif",
 ) -> None:
-    """Stores the clear sky percentage data as a Cloud Optimized GeoTIFF (COG)
-    file.
+    """
+    Stores the clear sky percentage data as a Cloud Optimized GeoTIFF (COG) file.
 
     Args:
         da_csp (xarray.DataArray): An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
@@ -104,7 +111,7 @@ def store_clear_sky_percentage(
     Returns:
         None
     """
-    da_csp = (da_csp.where(da > 0) * 100).fillna(0)
+    da_csp = (da_csp.where(da_csp > 0) * 100).fillna(0)
     da_csp = da_csp.astype("uint8").rio.write_nodata(0)
 
     poly = get_wrs2_tile(path, row)
@@ -124,9 +131,9 @@ def get_jrc_surface_water(
     bands: list = ["occurrence", "seasonality", "recurrence"],
     chunks: dict = {"x": 512, "y": 512},
 ) -> "xarray.Dataset":
-    """Fetches JRC Global Surface Water data from the Microsoft Planetary
-    Computer for a specified area of interest, and returns it as an xarray
-    Dataset.
+    """
+    Fetches JRC Global Surface Water data from the Microsoft Planetary Computer for a
+    specified area of interest, and returns it as an xarray Dataset.
 
     Args:
         shp: A GeoDataFrame containing the geometry of the area of interest.
@@ -136,7 +143,6 @@ def get_jrc_surface_water(
     Returns:
         An xarray Dataset containing the requested JRC Global Surface Water data.
     """
-
     catalog = pystac_client.Client.open(
         PLANETARY_COMPUTER_CATALOG_URL,
         modifier=planetary_computer.sign_inplace,

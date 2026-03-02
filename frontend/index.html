@@ -15,7 +15,7 @@
       <strong>Debug Log (Press '?' to toggle)</strong>
       <div id="debug-content"></div>
     </div>
-    
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="config.js"></script>
     <script>
@@ -39,9 +39,9 @@
       });
 
       // Detect environment
-      const isLocal = window.location.hostname === 'localhost' 
+      const isLocal = window.location.hostname === 'localhost'
         || window.location.hostname === '127.0.0.1';
-      
+
       const API_BASE_URL = isLocal
         ? 'http://localhost:8080'
         : 'https://parcelas-api-228350087170.us-central1.run.app';
@@ -142,7 +142,7 @@
         + "?url=gs://parcelas-wrs2/mosaics/mosaic_clipped.json.gz"
         + "&rescale=0,100&colormap_name=coolwarm&clamp=true"
         + `&api_key=${API_KEY}`;
-      
+
       debugLog(`Tile URL template: ${tileUrl}`, 'info');
 
       const mosaicLayer = L.tileLayer(tileUrl, {

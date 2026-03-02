@@ -19,7 +19,8 @@ RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
 PUBLIC_PATHS = {"/health"}
 ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:3001"  # default for local dev only
+    "ALLOWED_ORIGINS",
+    "http://localhost:3001",  # default for local dev only
 ).split(",")
 
 os.environ["GS_NO_SIGN_REQUEST"] = "YES"
@@ -37,6 +38,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
+    """Check for API key in header or query param, except for public paths."""
+
     if request.url.path in PUBLIC_PATHS:
         return await call_next(request)
 
@@ -52,11 +55,12 @@ async def api_key_middleware(request: Request, call_next):
 
 
 # Simple in-memory rate limiter
-rate_limit_storage = defaultdict(list)
+rate_limit_storage: dict = defaultdict(list)
 
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    """Apply rate limiting based on client IP, except for public paths."""
     if request.url.path in PUBLIC_PATHS:
         return await call_next(request)
 
@@ -82,6 +86,11 @@ def generate_mosaic(
     gcs_path: Optional[str] = None,
     glob_pattern: str = "uint8",
 ):
+    """
+    Generate a mosaic JSON from COGs in GCS.
+
+    Optionally save the mosaic JSON back to GCS.
+    """
     COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
     if not COG_BASE_URL:
         return {"error": "COG_STORAGE_URL not configured"}
@@ -143,4 +152,5 @@ app.include_router(mosaic.router, prefix="/mosaicjson")
 
 @app.get("/health")
 def health():
+    """Simple health check endpoint."""
     return {"status": "ok"}

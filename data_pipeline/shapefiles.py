@@ -1,3 +1,7 @@
+"""A module for downloading and processing shapefiles related to the WRS-2 grid and the
+boundary of Chile.
+"""
+
 import io
 import os
 import zipfile
@@ -7,17 +11,23 @@ import requests
 
 URL_WRS2_GRID = "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/files/WRS2_descending_0.zip"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/91.0.4472.124 Safari/537.36"
+    )
 }
 
 
 def get_wrs2_grid():
+    """Returns a GeoDataFrame containing the WRS-2 grid."""
     return gpd.read_file(URL_WRS2_GRID)
 
 
 def download_wrs2_grid(output_file: str = "wrs2_descending.geojson") -> None:
-    """Downloads the WRS-2 grid from the USGS and saves it as a GeoJSON file.
-    If the file already exists, it will skip the download.
+    """
+    Downloads the WRS-2 grid from the USGS and saves it as a GeoJSON file. If the file
+    already exists, it will skip the download.
 
     Args:
         output_file: The name of the output GeoJSON file. Default is "wrs2_descending.geojson".
@@ -28,12 +38,11 @@ def download_wrs2_grid(output_file: str = "wrs2_descending.geojson") -> None:
     Raises:
         ValueError: If the downloaded file is not a valid zip or if a .shp file cannot be found in the zip.
     """
-
     if os.path.exists(output_file):
         print(f"WRS-2 grid already exists at {output_file}.")
         return
 
-    print(f"Downloading WRS-2 from USGS...")
+    print("Downloading WRS-2 from USGS...")
     response = requests.get(URL_WRS2_GRID, headers=HEADERS, stream=True)
 
     if response.status_code != 200:
@@ -65,8 +74,8 @@ def download_wrs2_grid(output_file: str = "wrs2_descending.geojson") -> None:
 
 
 def get_chile_boundary(output_file: str = "chile.geojson") -> gpd.GeoDataFrame:
-    """Downloads the boundary of Chile from Natural Earth and saves it as a
-    GeoJSON file.
+    """
+    Downloads the boundary of Chile from Natural Earth and saves it as a GeoJSON file.
 
     Args:
         output_file: The name of the output GeoJSON file. Default is "chile.geojson".
@@ -74,7 +83,6 @@ def get_chile_boundary(output_file: str = "chile.geojson") -> gpd.GeoDataFrame:
     Returns:
         A GeoDataFrame containing the boundary of Chile.
     """
-
     world = gpd.read_file(
         "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries.zip"
     )
@@ -85,8 +93,9 @@ def get_chile_boundary(output_file: str = "chile.geojson") -> gpd.GeoDataFrame:
 
 
 def get_chile_wrs2_tiles() -> gpd.GeoDataFrame:
-    """Returns a GeoDataFrame containing the WRS-2 tiles that intersect with
-    the boundary of Chile.
+    """
+    Returns a GeoDataFrame containing the WRS-2 tiles that intersect with the boundary
+    of Chile.
 
     Args:
         None
@@ -94,7 +103,6 @@ def get_chile_wrs2_tiles() -> gpd.GeoDataFrame:
     Returns:
         A GeoDataFrame containing the WRS-2 tiles that intersect with the boundary of Chile.
     """
-
     wrs2_tiles = get_wrs2_grid()
     chile_boundary = get_chile_boundary()
     intersects = wrs2_tiles.intersects(chile_boundary.geometry.unary_union)
@@ -102,8 +110,9 @@ def get_chile_wrs2_tiles() -> gpd.GeoDataFrame:
 
 
 def get_wrs2_tile(path: int, row: int) -> gpd.GeoDataFrame:
-    """Returns a GeoDataFrame containing the WRS-2 tile that corresponds to the
-    given path and row.
+    """
+    Returns a GeoDataFrame containing the WRS-2 tile that corresponds to the given path
+    and row.
 
     Args:
         path: The WRS-2 path number.
@@ -112,6 +121,5 @@ def get_wrs2_tile(path: int, row: int) -> gpd.GeoDataFrame:
     Returns:
         A GeoDataFrame containing the WRS-2 tile that corresponds to the given path and row.
     """
-
     wrs2_tiles = get_wrs2_grid()
     return wrs2_tiles[(wrs2_tiles["PATH"] == path) & (wrs2_tiles["ROW"] == row)]
