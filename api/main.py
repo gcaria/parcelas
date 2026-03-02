@@ -1,5 +1,6 @@
 import gzip
 import json
+import logging
 import os
 import secrets
 import time
@@ -22,6 +23,12 @@ ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:3001",  # default for local dev only
 ).split(",")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 os.environ["GS_NO_SIGN_REQUEST"] = "YES"
 
@@ -102,6 +109,7 @@ def generate_mosaic(
         tile_ids_list = [t.strip() for t in tile_ids.split(",")]
         cog_urls = [f"{COG_BASE_URL}/{t}_{glob_pattern}.tif" for t in tile_ids_list]
 
+    logger.info(f"Generating mosaic for COGS: {cog_urls}")
     mosaic_json = MosaicJSON.from_urls(cog_urls)
 
     if save_to_gcs:
