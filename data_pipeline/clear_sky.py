@@ -9,6 +9,7 @@ import geopandas
 import odc.stac
 import planetary_computer
 import pystac_client
+import rioxarray  # noqa: F401
 import xarray
 
 from data_pipeline.shapefiles import get_wrs2_tile
@@ -30,6 +31,8 @@ def get_landsat_data(
     row: int,
     time_range: str = "2020-01-01/2020-12-31",
     bands: List[str] = ["qa_pixel"],
+    chunks: dict = {"x": 512, "y": 512},
+    mask_water: bool = True,
 ) -> "xarray.Dataset":
     """
     Fetches Landsat 8 and 9 data from the Microsoft Planetary Computer for a specified
@@ -41,6 +44,8 @@ def get_landsat_data(
         row: The WRS-2 row number.
         time_range: The time range for which to fetch data, in the format "YYYY-MM-DD/YYYY-MM-DD".
         bands: A list of band names to fetch.
+        chunks: A dictionary specifying the chunk sizes for the xarray Dataset.
+        mask_water: A boolean indicating whether to mask out water pixels based on the JRC Global Surface Water dataset.
 
     Returns:
         An xarray Dataset containing the requested Landsat data.
@@ -63,17 +68,24 @@ def get_landsat_data(
 
     items = search.item_collection()
 
-    return odc.stac.stac_load(
+    da_ls = odc.stac.stac_load(
         items,
         bands=bands,
         intersects=shp.union_all(),
-        chunks={"y": 512, "x": 512},
+        chunks=chunks,
         nodata=65535,
-    )
+    )["qa_pixel"]
+
+    da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
+    da_sw = da_sw.rio.reproject_match(da_ls).squeeze()
+    if mask_water:
+        da_ls = da_ls.where(da_sw > 90)
+
+    return da_ls
 
 
 def compute_clear_sky_percentage(
-    data_ls: "xarray.Dataset", clear_sky_qa_flags: List[int] = CLEAR_SKY_QA_FLAGS
+    da_ls: "xarray.Dataset", clear_sky_qa_flags: List[int] = CLEAR_SKY_QA_FLAGS
 ) -> "xarray.DataArray":
     """
     Computes the percentage of clear sky pixels in a given xarray Dataset containing
@@ -86,11 +98,10 @@ def compute_clear_sky_percentage(
     Returns:
         An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
     """
-    qa = data_ls["qa_pixel"]
-    clear_sky = qa.isin(clear_sky_qa_flags)
+    clear_sky = da_ls.isin(clear_sky_qa_flags)
     _sum = clear_sky.astype(int).sum(dim="time")
 
-    return _sum / len(qa.time)
+    return _sum / len(da_ls.time)
 
 
 def store_clear_sky_percentage(
@@ -128,7 +139,7 @@ def store_clear_sky_percentage(
 
 def get_jrc_surface_water(
     shp: "geopandas.GeoDataFrame",
-    bands: list = ["occurrence", "seasonality", "recurrence"],
+    bands: List[str] = ["occurrence"],
     chunks: dict = {"x": 512, "y": 512},
 ) -> "xarray.Dataset":
     """
