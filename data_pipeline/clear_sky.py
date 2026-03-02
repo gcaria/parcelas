@@ -79,7 +79,7 @@ def get_landsat_data(
     da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
     da_sw = da_sw.rio.reproject_match(da_ls).squeeze()
     if mask_water:
-        da_ls = da_ls.where(da_sw > 90)
+        da_ls = da_ls.where(da_sw < 90)
 
     return da_ls
 
