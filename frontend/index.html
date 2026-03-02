@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -7,7 +7,7 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div id="map"></div>
@@ -20,11 +20,11 @@
     <script src="config.js"></script>
     <script>
       // --- Debug Logger ---
-      const debugLog = (msg, type = 'info') => {
+      const debugLog = (msg, type = "info") => {
         console.log(`[${type.toUpperCase()}]`, msg);
-        const debugContent = document.getElementById('debug-content');
+        const debugContent = document.getElementById("debug-content");
         const timestamp = new Date().toLocaleTimeString();
-        const line = document.createElement('div');
+        const line = document.createElement("div");
         line.className = type;
         line.textContent = `[${timestamp}] ${msg}`;
         debugContent.appendChild(line);
@@ -32,39 +32,43 @@
       };
 
       // Toggle debug panel with '?' key
-      document.addEventListener('keydown', (e) => {
-        if (e.key === '?') {
-          document.getElementById('debug').classList.toggle('visible');
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "?") {
+          document.getElementById("debug").classList.toggle("visible");
         }
       });
 
       // Detect environment
-      const isLocal = window.location.hostname === 'localhost'
-        || window.location.hostname === '127.0.0.1';
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
 
       const API_BASE_URL = isLocal
-        ? 'http://localhost:8080'
-        : 'https://parcelas-api-228350087170.us-central1.run.app';
+        ? "http://localhost:8080"
+        : "https://parcelas-api-228350087170.us-central1.run.app";
 
-      debugLog(`Environment: ${isLocal ? 'LOCAL' : 'PRODUCTION'}`, 'info');
-      debugLog(`API Base URL: ${API_BASE_URL}`, 'info');
-      debugLog(`Hostname: ${window.location.hostname}`, 'info');
+      debugLog(`Environment: ${isLocal ? "LOCAL" : "PRODUCTION"}`, "info");
+      debugLog(`API Base URL: ${API_BASE_URL}`, "info");
+      debugLog(`Hostname: ${window.location.hostname}`, "info");
 
       // Test API connectivity
       const testAPI = async () => {
-        debugLog('Testing API connectivity...', 'info');
+        debugLog("Testing API connectivity...", "info");
         try {
           const response = await fetch(`${API_BASE_URL}/health`);
           if (response.ok) {
             const data = await response.json();
-            debugLog(`API health check: ${JSON.stringify(data)}`, 'success');
+            debugLog(`API health check: ${JSON.stringify(data)}`, "success");
           } else {
-            debugLog(`API health check failed: ${response.status} ${response.statusText}`, 'error');
+            debugLog(
+              `API health check failed: ${response.status} ${response.statusText}`,
+              "error",
+            );
           }
         } catch (err) {
-          debugLog(`API health check error: ${err.message}`, 'error');
-          if (err.message.includes('blocked')) {
-            debugLog('Request may be blocked by ad blocker or CORS', 'error');
+          debugLog(`API health check error: ${err.message}`, "error");
+          if (err.message.includes("blocked")) {
+            debugLog("Request may be blocked by ad blocker or CORS", "error");
           }
         }
       };
@@ -74,37 +78,38 @@
       // --- Colorbar as a Leaflet Control ---
       const ColorBar = L.Control.extend({
         options: {
-          position: 'bottomright'
+          position: "bottomright",
         },
         onAdd: function () {
-          const container = L.DomUtil.create('div', 'leaflet-colorbar');
+          const container = L.DomUtil.create("div", "leaflet-colorbar");
 
-          const title = L.DomUtil.create('div', 'colorbar-title');
-          title.textContent = 'Clear Sky Days (%)';
-          title.style.cssText = 'font-size:12px; font-family:sans-serif; color:#333; margin-bottom:5px; font-weight:bold; text-align:center; width:180px;';
+          const title = L.DomUtil.create("div", "colorbar-title");
+          title.textContent = "Clear Sky Days (%)";
+          title.style.cssText =
+            "font-size:12px; font-family:sans-serif; color:#333; margin-bottom:5px; font-weight:bold; text-align:center; width:180px;";
           container.appendChild(title);
 
-          const gradient = L.DomUtil.create('div', 'colorbar-gradient');
+          const gradient = L.DomUtil.create("div", "colorbar-gradient");
           container.appendChild(gradient);
 
-          const labels = L.DomUtil.create('div', 'colorbar-labels');
-          ['0', '50', '100'].forEach(function (val) {
-            const span = document.createElement('span');
+          const labels = L.DomUtil.create("div", "colorbar-labels");
+          ["0", "50", "100"].forEach(function (val) {
+            const span = document.createElement("span");
             span.textContent = val;
             labels.appendChild(span);
           });
           container.appendChild(labels);
           return container;
-        }
+        },
       });
 
       // --- GitHub Link Control ---
       const GitHubLink = L.Control.extend({
         options: {
-          position: 'bottomleft'
+          position: "bottomleft",
         },
         onAdd: function () {
-          const container = L.DomUtil.create('div', 'leaflet-github');
+          const container = L.DomUtil.create("div", "leaflet-github");
           container.innerHTML = `
             <a href="https://github.com/gcaria/parcelas" target="_blank" rel="noopener noreferrer">
               <svg height="16" width="16" viewBox="0 0 16 16" style="vertical-align:middle; margin-right:5px;">
@@ -120,78 +125,95 @@
             </a>
           `;
           return container;
-        }
+        },
       });
 
-
       // --- Create map ---
-      debugLog('Initializing map...', 'info');
-      const map = L.map("map").setView([-39.28, -72.25], 8);
+      debugLog("Initializing map...", "info");
+      const map = L.map("map").setView([-35.675, -71.543], 5);
 
       // Basemap
-      debugLog('Adding basemap layer...', 'info');
-      const basemap = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap"
-      }).addTo(map);
+      debugLog("Adding basemap layer...", "info");
+      const basemap = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution: "© OpenStreetMap",
+        },
+      ).addTo(map);
 
-      basemap.on('load', () => debugLog('Basemap loaded successfully', 'success'));
-      basemap.on('tileerror', (e) => debugLog(`Basemap tile error: ${e.tile.src}`, 'error'));
+      basemap.on("load", () =>
+        debugLog("Basemap loaded successfully", "success"),
+      );
+      basemap.on("tileerror", (e) =>
+        debugLog(`Basemap tile error: ${e.tile.src}`, "error"),
+      );
 
       // TiTiler mosaic tiles
-      const tileUrl = `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png`
-        + "?url=gs://parcelas-wrs2/mosaics/mosaic_clipped.json.gz"
-        + "&rescale=0,100&colormap_name=coolwarm&clamp=true"
-        + `&api_key=${API_KEY}`;
+      const tileUrl =
+        `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png` +
+        "?url=gs://parcelas-wrs2/mosaics/mosaic_clipped.json.gz" +
+        "&rescale=0,100&colormap_name=coolwarm&clamp=true" +
+        `&api_key=${API_KEY}`;
 
-      debugLog(`Tile URL template: ${tileUrl}`, 'info');
+      debugLog(`Tile URL template: ${tileUrl}`, "info");
 
       const mosaicLayer = L.tileLayer(tileUrl, {
         tileSize: 256,
-        opacity: 0.8
+        opacity: 0.8,
       }).addTo(map);
 
       // Track tile loading
       let tilesLoaded = 0;
       let tilesErrored = 0;
 
-      mosaicLayer.on('tileloadstart', (e) => {
-        debugLog(`Loading tile: ${e.url}`, 'info');
+      mosaicLayer.on("tileloadstart", (e) => {
+        debugLog(`Loading tile: ${e.url}`, "info");
       });
 
-      mosaicLayer.on('tileload', (e) => {
+      mosaicLayer.on("tileload", (e) => {
         tilesLoaded++;
-        debugLog(`Tile loaded successfully (${tilesLoaded} total)`, 'success');
+        debugLog(`Tile loaded successfully (${tilesLoaded} total)`, "success");
       });
 
-      mosaicLayer.on('tileerror', (e) => {
+      mosaicLayer.on("tileerror", (e) => {
         tilesErrored++;
-        debugLog(`Tile error (${tilesErrored} total): ${e.tile.src}`, 'error');
-        debugLog(`Error coords: z=${e.coords.z}, x=${e.coords.x}, y=${e.coords.y}`, 'error');
+        debugLog(`Tile error (${tilesErrored} total): ${e.tile.src}`, "error");
+        debugLog(
+          `Error coords: z=${e.coords.z}, x=${e.coords.x}, y=${e.coords.y}`,
+          "error",
+        );
       });
 
-      mosaicLayer.on('loading', () => debugLog('Mosaic layer loading...', 'info'));
-      mosaicLayer.on('load', () => debugLog('Mosaic layer load complete', 'success'));
+      mosaicLayer.on("loading", () =>
+        debugLog("Mosaic layer loading...", "info"),
+      );
+      mosaicLayer.on("load", () =>
+        debugLog("Mosaic layer load complete", "success"),
+      );
 
-      debugLog('Adding colorbar control...', 'info');
+      debugLog("Adding colorbar control...", "info");
       new ColorBar().addTo(map);
 
-      debugLog('Adding github link...', 'info');
+      debugLog("Adding github link...", "info");
       new GitHubLink().addTo(map);
 
       // Log map events
-      map.on('zoomend', () => debugLog(`Zoom level: ${map.getZoom()}`, 'info'));
-      map.on('moveend', () => {
+      map.on("zoomend", () => debugLog(`Zoom level: ${map.getZoom()}`, "info"));
+      map.on("moveend", () => {
         const center = map.getCenter();
-        debugLog(`Map center: [${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}]`, 'info');
+        debugLog(
+          `Map center: [${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}]`,
+          "info",
+        );
       });
 
       // Catch global errors
-      window.addEventListener('error', (e) => {
-        debugLog(`Global error: ${e.message}`, 'error');
+      window.addEventListener("error", (e) => {
+        debugLog(`Global error: ${e.message}`, "error");
       });
 
-      debugLog('Map initialization complete', 'success');
-      debugLog('Press ? to toggle this debug panel', 'info');
+      debugLog("Map initialization complete", "success");
+      debugLog("Press ? to toggle this debug panel", "info");
     </script>
   </body>
 </html>
