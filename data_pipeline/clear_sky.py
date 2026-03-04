@@ -112,15 +112,17 @@ def store_clear_sky_percentage(
     path: int,
     row: int,
     output_template: str = "{path:03d}_{row:03d}.tif",
+    buffer: int = -500,
 ) -> None:
     """
     Stores the clear sky percentage data as a Cloud Optimized GeoTIFF (COG) file.
 
     Args:
-        da_csp (xarray.DataArray): An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
-        path (int): The WRS-2 path number.
-        row (int): The WRS-2 row number.
-        output_template (str): A template string for the output file name, with placeholders for path and row.
+        da_csp: An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
+        path: The WRS-2 path number.
+        row: The WRS-2 row number.
+        output_template: A template string for the output file name, with placeholders for path and row.
+        buffer: The distance (in meters) to buffer the WRS-2 tile geometry for clipping the output raster.
 
     Returns:
         None
@@ -129,8 +131,9 @@ def store_clear_sky_percentage(
     da_csp = da_csp.astype("uint8").rio.write_nodata(0)
 
     poly = get_wrs2_tile(path, row)
+    # Simplify the geometry to make it square
     poly = poly.to_crs(da_csp.rio.crs).geometry.iloc[0].simplify(tolerance=1000)
-    poly = poly.buffer(-500)
+    poly = poly.buffer(buffer)
 
     da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
 
