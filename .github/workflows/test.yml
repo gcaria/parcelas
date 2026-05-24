@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     container: python:3.11-slim
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-pipeline-${{ hashFiles('requirements.txt') }}
@@ -34,10 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     container: python:3.11-slim
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-api-${{ hashFiles('api/requirements.txt') }}
