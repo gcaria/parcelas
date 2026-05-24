@@ -160,6 +160,41 @@ def _format_tile_message(path: int | None, row: int | None, tile_id: str | None)
     return ""
 
 
+def format_satellite_tile_key(
+    sensor: Sensor,
+    path: int | None = None,
+    row: int | None = None,
+    tile_id: str | None = None,
+) -> str:
+    """
+    Format a stable output tile key for a supported satellite sensor.
+
+    Args:
+        sensor: The satellite sensor. Supported values are "landsat" and "sentinel2".
+        path: The WRS-2 path number. Required for Landsat.
+        row: The WRS-2 row number. Required for Landsat.
+        tile_id: The Sentinel-2 MGRS tile ID. Required for Sentinel-2.
+
+    Returns:
+        A stable tile key suitable for file names.
+
+    Raises:
+        ValueError: If required tile identifiers are missing or the sensor is unsupported.
+    """
+    if sensor == "landsat":
+        if path is None or row is None:
+            raise ValueError("path and row are required when sensor='landsat'")
+        return f"landsat_{path:03d}_{row:03d}"
+
+    if sensor == "sentinel2":
+        if tile_id is None:
+            raise ValueError("tile_id is required when sensor='sentinel2'")
+        return f"sentinel2_{_normalize_sentinel2_tile_id(tile_id)}"
+
+    supported_sensors = ", ".join(SENSOR_CONFIGS)
+    raise ValueError(f"Unsupported sensor '{sensor}'. Use one of: {supported_sensors}")
+
+
 def _normalize_sentinel2_tile_id(tile_id: str) -> str:
     """Normalize Sentinel-2 tile IDs to the MGRS value used by STAC."""
     normalized = tile_id.strip().upper()
@@ -228,38 +263,123 @@ def compute_clear_sky_percentage(
 
 def store_clear_sky_percentage(
     da_csp: "xarray.DataArray",
-    path: int,
-    row: int,
-    output_template: str = "{path:03d}_{row:03d}.tif",
+    path: int | None = None,
+    row: int | None = None,
+    tile_id: str | None = None,
+    sensor: Sensor = "landsat",
+    output_template: str = "{tile_key}.tif",
     buffer: int = -500,
-) -> None:
+    clip_shp: "geopandas.GeoDataFrame | None" = None,
+) -> str:
     """
-    Stores the clear sky percentage data as a Cloud Optimized GeoTIFF (COG) file.
+    Store clear sky percentage data as a Cloud Optimized GeoTIFF (COG) file.
 
     Args:
         da_csp: An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
-        path: The WRS-2 path number.
-        row: The WRS-2 row number.
-        output_template: A template string for the output file name, with placeholders for path and row.
-        buffer: The distance (in meters) to buffer the WRS-2 tile geometry for clipping the output raster.
+        path: The WRS-2 path number. Required for Landsat.
+        row: The WRS-2 row number. Required for Landsat.
+        tile_id: The Sentinel-2 MGRS tile ID. Required for Sentinel-2.
+        sensor: The satellite sensor. Supported values are "landsat" and "sentinel2".
+        output_template: A template string for the output file name. Supports
+            placeholders for tile_key, sensor, path, row, and tile_id.
+        buffer: The distance in meters to buffer the clipping geometry.
+        clip_shp: Optional clipping geometry. If omitted for Landsat, the WRS-2 tile
+            geometry is loaded from path and row.
 
     Returns:
-        None
+        The output file name or path.
     """
+    tile_key = format_satellite_tile_key(
+        sensor=sensor,
+        path=path,
+        row=row,
+        tile_id=tile_id,
+    )
     da_csp = (da_csp.where(da_csp > 0) * 100).fillna(0)
     da_csp = da_csp.astype("uint8").rio.write_nodata(0)
 
-    poly = get_wrs2_tile(path, row)
-    # Simplify the geometry to make it square
-    poly = poly.to_crs(da_csp.rio.crs).geometry.iloc[0].simplify(tolerance=1000)
+    if clip_shp is None:
+        if sensor != "landsat":
+            raise ValueError("clip_shp is required when storing non-Landsat outputs")
+        if path is None or row is None:
+            raise ValueError("path and row are required to load Landsat clip geometry")
+        clip_shp = get_wrs2_tile(path, row)
+
+    poly = clip_shp.to_crs(da_csp.rio.crs).union_all().simplify(tolerance=1000)
     poly = poly.buffer(buffer)
 
     da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
 
-    fname = output_template.format(path=path, row=row)
+    fname = output_template.format(
+        tile_key=tile_key,
+        sensor=sensor,
+        path=path,
+        row=row,
+        tile_id=_normalize_sentinel2_tile_id(tile_id)
+        if sensor == "sentinel2" and tile_id is not None
+        else tile_id,
+    )
     da_csp.rio.to_raster(fname, driver="COG")
 
     logging.info(f"Clear sky percentage stored at {fname}")
+    return fname
+
+
+def run_clear_sky_pipeline(
+    shp: "geopandas.GeoDataFrame",
+    path: int | None = None,
+    row: int | None = None,
+    tile_id: str | None = None,
+    sensor: Sensor = "landsat",
+    time_range: str = "2020-01-01/2020-12-31",
+    bands: List[str] | None = None,
+    chunks: dict = {"x": 512, "y": 512},
+    mask_water: bool = True,
+    output_template: str = "{tile_key}.tif",
+    buffer: int = -500,
+) -> str:
+    """
+    Fetch satellite data, compute clear sky percentage, and store it as a COG.
+
+    Args:
+        shp: A GeoDataFrame containing the geometry of the area of interest.
+        path: The WRS-2 path number. Required for Landsat.
+        row: The WRS-2 row number. Required for Landsat.
+        tile_id: The Sentinel-2 MGRS tile ID. Required for Sentinel-2.
+        sensor: The satellite sensor. Supported values are "landsat" and "sentinel2".
+        time_range: The time range for which to fetch data, in the format "YYYY-MM-DD/YYYY-MM-DD".
+        bands: A list of band names to fetch.
+        chunks: A dictionary specifying chunk sizes for xarray.
+        mask_water: Whether to mask out water pixels based on JRC Global Surface Water.
+        output_template: A template string for the output file name. Supports
+            placeholders for tile_key, sensor, path, row, and tile_id.
+        buffer: The distance in meters to buffer the clipping geometry.
+
+    Returns:
+        The output file name or path.
+    """
+    da_sat = get_satellite_data(
+        shp=shp,
+        path=path,
+        row=row,
+        tile_id=tile_id,
+        sensor=sensor,
+        time_range=time_range,
+        bands=bands,
+        chunks=chunks,
+        mask_water=mask_water,
+    )
+    da_csp = compute_clear_sky_percentage(da_sat)
+    return store_clear_sky_percentage(
+        da_csp=da_csp,
+        path=path,
+        row=row,
+        tile_id=tile_id,
+        sensor=sensor,
+        output_template=output_template,
+        buffer=buffer,
+        clip_shp=shp,
+    )
 
 
 def get_jrc_surface_water(

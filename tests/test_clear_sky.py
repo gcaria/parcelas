@@ -10,9 +10,11 @@ from shapely.geometry import box
 
 from data_pipeline.clear_sky import (
     compute_clear_sky_percentage,
+    format_satellite_tile_key,
     get_jrc_surface_water,
     get_landsat_data,
     get_satellite_data,
+    run_clear_sky_pipeline,
     store_clear_sky_percentage,
 )
 
@@ -251,6 +253,25 @@ def test_get_satellite_data_rejects_empty_sentinel2_tile_id(sample_geometry):
         get_satellite_data(sample_geometry, sensor="sentinel2", tile_id=" ")
 
 
+def test_format_satellite_tile_key_landsat():
+    """Test formatting Landsat output tile keys."""
+    assert format_satellite_tile_key("landsat", path=42, row=35) == "landsat_042_035"
+
+
+def test_format_satellite_tile_key_sentinel2():
+    """Test formatting Sentinel-2 output tile keys."""
+    assert format_satellite_tile_key("sentinel2", tile_id="T19HCD") == "sentinel2_19HCD"
+
+
+def test_format_satellite_tile_key_validates_identifiers():
+    """Test tile key identifier validation."""
+    with pytest.raises(ValueError, match="path and row"):
+        format_satellite_tile_key("landsat", path=42)
+
+    with pytest.raises(ValueError, match="tile_id"):
+        format_satellite_tile_key("sentinel2")
+
+
 @patch("data_pipeline.clear_sky.pystac_client.Client")
 @patch("data_pipeline.clear_sky.odc.stac.stac_load")
 def test_get_jrc_surface_water(mock_stac_load, mock_client, sample_geometry):
@@ -284,11 +305,100 @@ def test_store_clear_sky_percentage(mock_logging, mock_get_wrs2, sample_qa_dataa
 
     # Mock rioxarray methods
     da_csp = compute_clear_sky_percentage(sample_qa_dataarray)
+    da_csp = da_csp.rio.write_crs("EPSG:4326")
     da_csp.rio.write_nodata = Mock(return_value=da_csp)
     da_csp.rio.clip = Mock(return_value=da_csp)
     da_csp.rio.to_raster = Mock()
 
-    store_clear_sky_percentage(da_csp, path=42, row=35)
+    output_path = store_clear_sky_percentage(da_csp, path=42, row=35)
 
-    da_csp.rio.to_raster.assert_called_once()
+    assert output_path == "landsat_042_035.tif"
+    da_csp.rio.to_raster.assert_called_once_with("landsat_042_035.tif", driver="COG")
     mock_logging.info.assert_called_once()
+
+
+@patch("data_pipeline.clear_sky.logging")
+def test_store_clear_sky_percentage_sentinel2(
+    mock_logging, sample_qa_dataarray, sample_geometry
+):
+    """Test storing Sentinel-2 clear sky percentage with tile key naming."""
+    da_csp = compute_clear_sky_percentage(sample_qa_dataarray)
+    da_csp = da_csp.rio.write_crs("EPSG:4326")
+    da_csp.rio.write_nodata = Mock(return_value=da_csp)
+    da_csp.rio.clip = Mock(return_value=da_csp)
+    da_csp.rio.to_raster = Mock()
+
+    output_path = store_clear_sky_percentage(
+        da_csp,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        output_template="gs://bucket/cogs/{tile_key}_uint8.tif",
+        clip_shp=sample_geometry,
+    )
+
+    assert output_path == "gs://bucket/cogs/sentinel2_19HCD_uint8.tif"
+    da_csp.rio.to_raster.assert_called_once_with(
+        "gs://bucket/cogs/sentinel2_19HCD_uint8.tif", driver="COG"
+    )
+    mock_logging.info.assert_called_once()
+
+
+def test_store_clear_sky_percentage_sentinel2_requires_clip_shp(sample_qa_dataarray):
+    """Test Sentinel-2 storage requires explicit clipping geometry."""
+    da_csp = compute_clear_sky_percentage(sample_qa_dataarray)
+    da_csp = da_csp.rio.write_crs("EPSG:4326")
+    da_csp.rio.write_nodata = Mock(return_value=da_csp)
+
+    with pytest.raises(ValueError, match="clip_shp"):
+        store_clear_sky_percentage(da_csp, tile_id="T19HCD", sensor="sentinel2")
+
+
+@patch("data_pipeline.clear_sky.store_clear_sky_percentage")
+@patch("data_pipeline.clear_sky.compute_clear_sky_percentage")
+@patch("data_pipeline.clear_sky.get_satellite_data")
+def test_run_clear_sky_pipeline(
+    mock_get_satellite_data,
+    mock_compute_clear_sky_percentage,
+    mock_store_clear_sky_percentage,
+    sample_geometry,
+):
+    """Test the unified clear sky pipeline."""
+    mock_da_sat = Mock()
+    mock_da_csp = Mock()
+    mock_get_satellite_data.return_value = mock_da_sat
+    mock_compute_clear_sky_percentage.return_value = mock_da_csp
+    mock_store_clear_sky_percentage.return_value = (
+        "gs://bucket/cogs/sentinel2_19HCD.tif"
+    )
+
+    result = run_clear_sky_pipeline(
+        shp=sample_geometry,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        time_range="2020-01-01/2020-12-31",
+        output_template="gs://bucket/cogs/{tile_key}.tif",
+    )
+
+    assert result == "gs://bucket/cogs/sentinel2_19HCD.tif"
+    mock_get_satellite_data.assert_called_once_with(
+        shp=sample_geometry,
+        path=None,
+        row=None,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        time_range="2020-01-01/2020-12-31",
+        bands=None,
+        chunks={"x": 512, "y": 512},
+        mask_water=True,
+    )
+    mock_compute_clear_sky_percentage.assert_called_once_with(mock_da_sat)
+    mock_store_clear_sky_percentage.assert_called_once_with(
+        da_csp=mock_da_csp,
+        path=None,
+        row=None,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        output_template="gs://bucket/cogs/{tile_key}.tif",
+        buffer=-500,
+        clip_shp=sample_geometry,
+    )
