@@ -72,18 +72,35 @@ Then navigate to `http://localhost:3001`.
 
 ### Running the Data Pipeline
 
-To fetch Landsat data and compute clear sky percentages for a WRS-2 tile:
+To fetch satellite data and compute clear sky percentages for a WRS-2 tile:
 
 ```python
-from data_pipeline.clear_sky import get_landsat_data, compute_clear_sky_percentage, store_clear_sky_percentage
+from data_pipeline.clear_sky import get_satellite_data, compute_clear_sky_percentage, store_clear_sky_percentage
 from data_pipeline.shapefiles import get_wrs2_tile
 
 path, row = 233, 87
 shp = get_wrs2_tile(path, row)
 
-ds = get_landsat_data(shp, path, row, time_range="2020-01-01/2020-12-31")
+ds = get_satellite_data(
+    shp,
+    path=path,
+    row=row,
+    sensor="landsat",  # or "sentinel2"
+    time_range="2020-01-01/2020-12-31",
+)
 csp = compute_clear_sky_percentage(ds)
 store_clear_sky_percentage(csp, path, row, output_template="gs://my-bucket/cogs/{path:03d}_{row:03d}_uint8.tif")
+```
+
+For Sentinel-2, use the MGRS tile ID instead of WRS path/row:
+
+```python
+ds = get_satellite_data(
+    shp,
+    tile_id="T19HCD",
+    sensor="sentinel2",
+    time_range="2020-01-01/2020-12-31",
+)
 ```
 
 ### Generating a Mosaic

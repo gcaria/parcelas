@@ -1,9 +1,7 @@
-"""This module contains functions for fetching Landsat 8 and 9 data from the Microsoft
-Planetary Computer, computing the percentage of clear sky pixels.
-"""
+"""Fetch satellite data and compute clear-sky percentages."""
 
 import logging
-from typing import List
+from typing import Any, List, Literal
 
 import geopandas
 import odc.stac
@@ -14,7 +12,7 @@ import xarray
 
 from data_pipeline.shapefiles import get_wrs2_tile
 
-CLEAR_SKY_QA_FLAGS = [
+LANDSAT_CLEAR_SKY_QA_FLAGS = [
     21824,  # clear with lows set
     21826,  # dilated cloud over land
     21888,  # water with lows set
@@ -22,7 +20,156 @@ CLEAR_SKY_QA_FLAGS = [
     30048,  # high conf snow/ice
     54596,  # high conf cirrus
 ]
+SENTINEL2_CLEAR_SKY_SCL_CLASSES = [
+    4,  # vegetation
+    5,  # not vegetated
+    6,  # water
+    11,  # snow/ice
+]
+CLEAR_SKY_QA_FLAGS = LANDSAT_CLEAR_SKY_QA_FLAGS
 PLANETARY_COMPUTER_CATALOG_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+Sensor = Literal["landsat", "sentinel2"]
+
+SENSOR_CONFIGS: dict[Sensor, dict[str, Any]] = {
+    "landsat": {
+        "collection": "landsat-c2-l2",
+        "default_bands": ["qa_pixel"],
+        "data_band": "qa_pixel",
+        "clear_sky_flags": LANDSAT_CLEAR_SKY_QA_FLAGS,
+        "nodata": 65535,
+        "display_name": "Landsat",
+    },
+    "sentinel2": {
+        "collection": "sentinel-2-l2a",
+        "default_bands": ["SCL"],
+        "data_band": "SCL",
+        "clear_sky_flags": SENTINEL2_CLEAR_SKY_SCL_CLASSES,
+        "nodata": 0,
+        "display_name": "Sentinel-2",
+    },
+}
+
+
+def get_satellite_data(
+    shp: "geopandas.GeoDataFrame",
+    path: int | None = None,
+    row: int | None = None,
+    tile_id: str | None = None,
+    sensor: Sensor = "landsat",
+    time_range: str = "2020-01-01/2020-12-31",
+    bands: List[str] | None = None,
+    chunks: dict = {"x": 512, "y": 512},
+    mask_water: bool = True,
+) -> "xarray.DataArray":
+    """
+    Fetch satellite data from the Microsoft Planetary Computer.
+
+    Args:
+        shp: A GeoDataFrame containing the geometry of the area of interest.
+        path: The WRS-2 path number. Required for Landsat.
+        row: The WRS-2 row number. Required for Landsat.
+        tile_id: The Sentinel-2 MGRS tile ID, such as "19HCD" or "T19HCD".
+            Optional for Sentinel-2.
+        sensor: The satellite sensor to fetch. Supported values are "landsat" and
+            "sentinel2".
+        time_range: The time range for which to fetch data, in the format "YYYY-MM-DD/YYYY-MM-DD".
+        bands: A list of band names to fetch.
+        chunks: A dictionary specifying the chunk sizes for the xarray Dataset.
+        mask_water: A boolean indicating whether to mask out water pixels based on the JRC Global Surface Water dataset.
+
+    Returns:
+        An xarray DataArray containing the requested classification band.
+
+    Raises:
+        ValueError: If the sensor is unsupported, or if Landsat is requested without
+            a path and row.
+    """
+    if sensor not in SENSOR_CONFIGS:
+        supported_sensors = ", ".join(SENSOR_CONFIGS)
+        raise ValueError(
+            f"Unsupported sensor '{sensor}'. Use one of: {supported_sensors}"
+        )
+
+    if sensor == "landsat" and (path is None or row is None):
+        raise ValueError("path and row are required when sensor='landsat'")
+
+    config = SENSOR_CONFIGS[sensor]
+    bands = bands or config["default_bands"]
+    data_band = config["data_band"]
+    normalized_tile_id = (
+        _normalize_sentinel2_tile_id(tile_id)
+        if sensor == "sentinel2" and tile_id is not None
+        else None
+    )
+
+    catalog = pystac_client.Client.open(
+        PLANETARY_COMPUTER_CATALOG_URL,
+        modifier=planetary_computer.sign_inplace,
+    )
+
+    query = None
+    if sensor == "landsat":
+        query = {
+            "landsat:wrs_path": {"eq": f"{path:03d}"},
+            "landsat:wrs_row": {"eq": f"{row:03d}"},
+            "platform": {"in": ["landsat-8", "landsat-9"]},
+        }
+    elif normalized_tile_id is not None:
+        query = {"s2:mgrs_tile": {"eq": normalized_tile_id}}
+
+    search = catalog.search(
+        collections=[config["collection"]],
+        intersects=shp.union_all(),
+        datetime=time_range,
+        query=query,
+    )
+
+    items = search.item_collection()
+    tile_message = _format_tile_message(path=path, row=row, tile_id=normalized_tile_id)
+    logging.info(
+        f"Found {len(items)} {config['display_name']} items{tile_message} in time range {time_range}"
+    )
+
+    da_sat = odc.stac.stac_load(
+        items,
+        bands=bands,
+        intersects=shp.union_all(),
+        chunks=chunks,
+        nodata=config["nodata"],
+    )[data_band]
+
+    if mask_water:
+        da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
+        da_sw = da_sw.rio.reproject_match(da_sat).squeeze()
+        da_sat = da_sat.where(da_sw < 90)
+
+    da_sat.attrs["sensor"] = sensor
+    da_sat.attrs["clear_sky_flags"] = config["clear_sky_flags"]
+
+    return da_sat
+
+
+def _format_tile_message(path: int | None, row: int | None, tile_id: str | None) -> str:
+    """Format optional tile details for log messages."""
+    if path is not None and row is not None:
+        return f" for path {path}/ row {row}"
+
+    if tile_id is not None:
+        return f" for tile {tile_id}"
+
+    return ""
+
+
+def _normalize_sentinel2_tile_id(tile_id: str) -> str:
+    """Normalize Sentinel-2 tile IDs to the MGRS value used by STAC."""
+    normalized = tile_id.strip().upper()
+    if normalized.startswith("T"):
+        normalized = normalized[1:]
+
+    if not normalized:
+        raise ValueError("tile_id must not be empty")
+
+    return normalized
 
 
 def get_landsat_data(
@@ -30,77 +177,49 @@ def get_landsat_data(
     path: int,
     row: int,
     time_range: str = "2020-01-01/2020-12-31",
-    bands: List[str] = ["qa_pixel"],
+    bands: List[str] | None = None,
     chunks: dict = {"x": 512, "y": 512},
     mask_water: bool = True,
-) -> "xarray.Dataset":
+) -> "xarray.DataArray":
     """
-    Fetches Landsat 8 and 9 data from the Microsoft Planetary Computer for a specified
-    WRS-2 tile and time range, and returns it as an xarray Dataset.
+    Fetch Landsat 8 and 9 data from the Microsoft Planetary Computer.
 
-    Args:
-        shp: A GeoDataFrame containing the geometry of the area of interest.
-        path: The WRS-2 path number.
-        row: The WRS-2 row number.
-        time_range: The time range for which to fetch data, in the format "YYYY-MM-DD/YYYY-MM-DD".
-        bands: A list of band names to fetch.
-        chunks: A dictionary specifying the chunk sizes for the xarray Dataset.
-        mask_water: A boolean indicating whether to mask out water pixels based on the JRC Global Surface Water dataset.
-
-    Returns:
-        An xarray Dataset containing the requested Landsat data.
+    This wrapper is kept for backward compatibility. Prefer get_satellite_data().
     """
-    catalog = pystac_client.Client.open(
-        PLANETARY_COMPUTER_CATALOG_URL,
-        modifier=planetary_computer.sign_inplace,
-    )
-
-    search = catalog.search(
-        collections=["landsat-c2-l2"],
-        intersects=shp.union_all(),
-        datetime=time_range,
-        query={
-            "landsat:wrs_path": {"eq": f"{path:03d}"},
-            "landsat:wrs_row": {"eq": f"{row:03d}"},
-            "platform": {"in": ["landsat-8", "landsat-9"]},
-        },
-    )
-
-    items = search.item_collection()
-    logging.info(
-        f"Found {len(items)} Landsat items for path {path}/ row {row} in time range {time_range}"
-    )
-
-    da_ls = odc.stac.stac_load(
-        items,
+    return get_satellite_data(
+        shp=shp,
+        path=path,
+        row=row,
+        sensor="landsat",
+        time_range=time_range,
         bands=bands,
-        intersects=shp.union_all(),
         chunks=chunks,
-        nodata=65535,
-    )["qa_pixel"]
-
-    da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
-    da_sw = da_sw.rio.reproject_match(da_ls).squeeze()
-    if mask_water:
-        da_ls = da_ls.where(da_sw < 90)
-
-    return da_ls
+        mask_water=mask_water,
+    )
 
 
 def compute_clear_sky_percentage(
-    da_ls: "xarray.Dataset", clear_sky_qa_flags: List[int] = CLEAR_SKY_QA_FLAGS
+    da_ls: "xarray.DataArray", clear_sky_qa_flags: List[int] | None = None
 ) -> "xarray.DataArray":
     """
-    Computes the percentage of clear sky pixels in a given xarray Dataset containing
-    Landsat data.
+    Compute the percentage of clear-sky pixels in a satellite classification band.
 
     Args:
-        data_ls: An xarray Dataset containing the Landsat data, with a "qa_pixel" variable.
-        clear_sky_qa_flags: A list of QA flag values that indicate clear sky conditions.
+        da_ls: An xarray DataArray containing a satellite classification band.
+        clear_sky_qa_flags: Classification values that indicate clear sky conditions.
+            Defaults to values stored by get_satellite_data(), or Landsat QA flags.
 
     Returns:
         An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
+
+    Raises:
+        ValueError: If the input DataArray has no time observations.
     """
+    if len(da_ls.time) == 0:
+        raise ValueError("Cannot compute clear sky percentage from empty data")
+
+    if clear_sky_qa_flags is None:
+        clear_sky_qa_flags = da_ls.attrs.get("clear_sky_flags", CLEAR_SKY_QA_FLAGS)
     clear_sky = da_ls.isin(clear_sky_qa_flags)
     _sum = clear_sky.astype(int).sum(dim="time")
 

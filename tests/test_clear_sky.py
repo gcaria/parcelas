@@ -1,4 +1,4 @@
-"""Tests for the Landsat data module."""
+"""Tests for the clear sky data module."""
 
 from unittest.mock import Mock, patch
 
@@ -12,6 +12,7 @@ from data_pipeline.clear_sky import (
     compute_clear_sky_percentage,
     get_jrc_surface_water,
     get_landsat_data,
+    get_satellite_data,
     store_clear_sky_percentage,
 )
 
@@ -93,6 +94,23 @@ def test_compute_clear_sky_percentage_custom_flags(sample_qa_dataarray):
     np.testing.assert_allclose(result.values, expected)
 
 
+def test_compute_clear_sky_percentage_uses_dataarray_flags(sample_qa_dataarray):
+    """Test using clear sky flags from DataArray attrs."""
+    sample_qa_dataarray.attrs["clear_sky_flags"] = [21824]
+
+    result = compute_clear_sky_percentage(sample_qa_dataarray)
+
+    expected = np.array(
+        [
+            [2 / 3, 2 / 3, 0 / 3],
+            [0 / 3, 2 / 3, 0 / 3],
+            [0 / 3, 0 / 3, 2 / 3],
+        ]
+    )
+
+    np.testing.assert_allclose(result.values, expected)
+
+
 def test_compute_clear_sky_percentage_empty():
     """Test with empty data."""
     da_empty = xr.DataArray(
@@ -105,11 +123,10 @@ def test_compute_clear_sky_percentage_empty():
         compute_clear_sky_percentage(da_empty)
 
 
-@patch("data_pipeline.landsat.pystac_client.Client")
-@patch("data_pipeline.landsat.odc.stac.stac_load")
-@patch("data_pipeline.landsat.get_jrc_surface_water")
-def test_get_landsat_data(mock_get_jrc, mock_stac_load, mock_client, sample_geometry):
-    """Test fetching Landsat data."""
+@patch("data_pipeline.clear_sky.pystac_client.Client")
+@patch("data_pipeline.clear_sky.odc.stac.stac_load")
+def test_get_satellite_data_landsat(mock_stac_load, mock_client, sample_geometry):
+    """Test fetching Landsat data through the generalized function."""
     # Mock the STAC client and search
     mock_catalog = Mock()
     mock_client.open.return_value = mock_catalog
@@ -124,26 +141,118 @@ def test_get_landsat_data(mock_get_jrc, mock_stac_load, mock_client, sample_geom
     )
     mock_stac_load.return_value = {"qa_pixel": mock_da}
 
-    # Mock the JRC water data
-    mock_sw = xr.Dataset({"occurrence": xr.DataArray(np.ones((1, 10, 10)) * 50)})
-    mock_get_jrc.return_value = mock_sw
+    result = get_satellite_data(
+        shp=sample_geometry,
+        path=42,
+        row=35,
+        sensor="landsat",
+        time_range="2020-01-01/2020-12-31",
+        mask_water=False,
+    )
+
+    assert isinstance(result, xr.DataArray)
+    assert result.attrs["sensor"] == "landsat"
+    assert result.attrs["clear_sky_flags"]
+    mock_client.open.assert_called_once()
+    mock_catalog.search.assert_called_once_with(
+        collections=["landsat-c2-l2"],
+        intersects=sample_geometry.union_all(),
+        datetime="2020-01-01/2020-12-31",
+        query={
+            "landsat:wrs_path": {"eq": "042"},
+            "landsat:wrs_row": {"eq": "035"},
+            "platform": {"in": ["landsat-8", "landsat-9"]},
+        },
+    )
+    mock_stac_load.assert_called_once()
+
+
+@patch("data_pipeline.clear_sky.pystac_client.Client")
+@patch("data_pipeline.clear_sky.odc.stac.stac_load")
+def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geometry):
+    """Test fetching Sentinel-2 data through the generalized function."""
+    mock_catalog = Mock()
+    mock_client.open.return_value = mock_catalog
+    mock_search = Mock()
+    mock_catalog.search.return_value = mock_search
+    mock_search.item_collection.return_value = ["item1", "item2"]
+
+    mock_da = xr.DataArray(
+        np.ones((2, 10, 10)),
+        dims=("time", "y", "x"),
+    )
+    mock_stac_load.return_value = {"SCL": mock_da}
+
+    result = get_satellite_data(
+        shp=sample_geometry,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        time_range="2020-01-01/2020-12-31",
+        mask_water=False,
+    )
+
+    assert isinstance(result, xr.DataArray)
+    assert result.attrs["sensor"] == "sentinel2"
+    assert result.attrs["clear_sky_flags"] == [4, 5, 6, 11]
+    mock_catalog.search.assert_called_once_with(
+        collections=["sentinel-2-l2a"],
+        intersects=sample_geometry.union_all(),
+        datetime="2020-01-01/2020-12-31",
+        query={"s2:mgrs_tile": {"eq": "19HCD"}},
+    )
+    mock_stac_load.assert_called_once_with(
+        ["item1", "item2"],
+        bands=["SCL"],
+        intersects=sample_geometry.union_all(),
+        chunks={"x": 512, "y": 512},
+        nodata=0,
+    )
+
+
+@patch("data_pipeline.clear_sky.pystac_client.Client")
+@patch("data_pipeline.clear_sky.odc.stac.stac_load")
+def test_get_landsat_data_wrapper(mock_stac_load, mock_client, sample_geometry):
+    """Test backward-compatible Landsat wrapper."""
+    mock_catalog = Mock()
+    mock_client.open.return_value = mock_catalog
+    mock_search = Mock()
+    mock_catalog.search.return_value = mock_search
+    mock_search.item_collection.return_value = ["item1"]
+    mock_stac_load.return_value = {
+        "qa_pixel": xr.DataArray(np.ones((1, 10, 10)), dims=("time", "y", "x"))
+    }
 
     result = get_landsat_data(
         shp=sample_geometry,
         path=42,
         row=35,
         time_range="2020-01-01/2020-12-31",
+        mask_water=False,
     )
 
-    assert isinstance(result, xr.DataArray)
-    mock_client.open.assert_called_once()
-    mock_catalog.search.assert_called_once()
-    mock_stac_load.assert_called_once()
-    mock_get_jrc.assert_called_once()
+    assert result.attrs["sensor"] == "landsat"
 
 
-@patch("data_pipeline.landsat.pystac_client.Client")
-@patch("data_pipeline.landsat.odc.stac.stac_load")
+def test_get_satellite_data_landsat_requires_path_row(sample_geometry):
+    """Test Landsat path and row validation."""
+    with pytest.raises(ValueError, match="path and row"):
+        get_satellite_data(sample_geometry, sensor="landsat")
+
+
+def test_get_satellite_data_rejects_unknown_sensor(sample_geometry):
+    """Test sensor validation."""
+    with pytest.raises(ValueError, match="Unsupported sensor"):
+        get_satellite_data(sample_geometry, sensor="modis")  # type: ignore[arg-type]
+
+
+def test_get_satellite_data_rejects_empty_sentinel2_tile_id(sample_geometry):
+    """Test Sentinel-2 tile ID validation."""
+    with pytest.raises(ValueError, match="tile_id"):
+        get_satellite_data(sample_geometry, sensor="sentinel2", tile_id=" ")
+
+
+@patch("data_pipeline.clear_sky.pystac_client.Client")
+@patch("data_pipeline.clear_sky.odc.stac.stac_load")
 def test_get_jrc_surface_water(mock_stac_load, mock_client, sample_geometry):
     """Test fetching JRC surface water data."""
     # Mock the STAC client and search
@@ -165,8 +274,8 @@ def test_get_jrc_surface_water(mock_stac_load, mock_client, sample_geometry):
     mock_catalog.search.assert_called_once()
 
 
-@patch("data_pipeline.landsat.get_wrs2_tile")
-@patch("data_pipeline.landsat.logging")
+@patch("data_pipeline.clear_sky.get_wrs2_tile")
+@patch("data_pipeline.clear_sky.logging")
 def test_store_clear_sky_percentage(mock_logging, mock_get_wrs2, sample_qa_dataarray):
     """Test storing clear sky percentage as COG."""
     # Mock the WRS2 tile
