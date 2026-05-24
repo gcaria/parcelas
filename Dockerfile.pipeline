@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    gdal-bin \
+    libgdal-dev \
+    libspatialindex-dev \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --progress-bar off --retries 5 --timeout 120 -r requirements.txt
+
+COPY data_pipeline/ ./data_pipeline/
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+ENTRYPOINT ["python", "-m", "data_pipeline.run_tile"]
