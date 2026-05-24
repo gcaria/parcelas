@@ -207,6 +207,26 @@ def _normalize_sentinel2_tile_id(tile_id: str) -> str:
     return normalized
 
 
+def _make_clip_geometry(
+    clip_shp: "geopandas.GeoDataFrame",
+    raster_crs: Any,
+    buffer: int,
+):
+    """Create a clipping geometry in raster CRS, buffering in meters."""
+    clip_shp = clip_shp.to_crs(raster_crs)
+
+    if clip_shp.crs and clip_shp.crs.is_geographic:
+        metric_crs = clip_shp.estimate_utm_crs()
+        if metric_crs is None:
+            raise ValueError("Unable to estimate a projected CRS for clipping")
+
+        metric_shp = clip_shp.to_crs(metric_crs)
+        poly = metric_shp.union_all().simplify(tolerance=1000).buffer(buffer)
+        return geopandas.GeoSeries([poly], crs=metric_crs).to_crs(raster_crs).iloc[0]
+
+    return clip_shp.union_all().simplify(tolerance=1000).buffer(buffer)
+
+
 def get_landsat_data(
     shp: "geopandas.GeoDataFrame",
     path: int,
@@ -305,8 +325,7 @@ def store_clear_sky_percentage(
             raise ValueError("path and row are required to load Landsat clip geometry")
         clip_shp = get_wrs2_tile(path, row)
 
-    poly = clip_shp.to_crs(da_csp.rio.crs).union_all().simplify(tolerance=1000)
-    poly = poly.buffer(buffer)
+    poly = _make_clip_geometry(clip_shp, da_csp.rio.crs, buffer)
 
     da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
 

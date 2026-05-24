@@ -37,9 +37,9 @@ def sample_qa_dataarray():
                 [0, 0, 21824],
             ],
             [
-                [0, 0, 21826],  # time 2: one clear sky pixel
-                [21826, 0, 0],
-                [0, 0, 0],
+                [21824, 21824, 0],  # time 2: five clear sky pixels
+                [21826, 21824, 0],
+                [0, 0, 21824],
             ],
             [
                 [0, 0, 0],  # time 3: no clear sky pixels
@@ -54,8 +54,8 @@ def sample_qa_dataarray():
         dims=("time", "y", "x"),
         coords={
             "time": ["2020-01-01", "2020-02-01", "2020-03-01"],
-            "y": range(3),
-            "x": range(3),
+            "y": [35.25, 35.5, 35.75],
+            "x": [-119.75, -119.5, -119.25],
         },
     )
 
@@ -297,36 +297,33 @@ def test_get_jrc_surface_water(mock_stac_load, mock_client, sample_geometry):
 
 @patch("data_pipeline.clear_sky.get_wrs2_tile")
 @patch("data_pipeline.clear_sky.logging")
-def test_store_clear_sky_percentage(mock_logging, mock_get_wrs2, sample_qa_dataarray):
+@patch("rioxarray.raster_array.RasterArray.to_raster")
+def test_store_clear_sky_percentage(
+    mock_to_raster, mock_logging, mock_get_wrs2, sample_qa_dataarray
+):
     """Test storing clear sky percentage as COG."""
     # Mock the WRS2 tile
     mock_gdf = gpd.GeoDataFrame(geometry=[box(-121, 34, -118, 37)], crs="EPSG:4326")
     mock_get_wrs2.return_value = mock_gdf
 
-    # Mock rioxarray methods
     da_csp = compute_clear_sky_percentage(sample_qa_dataarray)
     da_csp = da_csp.rio.write_crs("EPSG:4326")
-    da_csp.rio.write_nodata = Mock(return_value=da_csp)
-    da_csp.rio.clip = Mock(return_value=da_csp)
-    da_csp.rio.to_raster = Mock()
 
     output_path = store_clear_sky_percentage(da_csp, path=42, row=35)
 
     assert output_path == "landsat_042_035.tif"
-    da_csp.rio.to_raster.assert_called_once_with("landsat_042_035.tif", driver="COG")
+    mock_to_raster.assert_called_once_with("landsat_042_035.tif", driver="COG")
     mock_logging.info.assert_called_once()
 
 
 @patch("data_pipeline.clear_sky.logging")
+@patch("rioxarray.raster_array.RasterArray.to_raster")
 def test_store_clear_sky_percentage_sentinel2(
-    mock_logging, sample_qa_dataarray, sample_geometry
+    mock_to_raster, mock_logging, sample_qa_dataarray, sample_geometry
 ):
     """Test storing Sentinel-2 clear sky percentage with tile key naming."""
     da_csp = compute_clear_sky_percentage(sample_qa_dataarray)
     da_csp = da_csp.rio.write_crs("EPSG:4326")
-    da_csp.rio.write_nodata = Mock(return_value=da_csp)
-    da_csp.rio.clip = Mock(return_value=da_csp)
-    da_csp.rio.to_raster = Mock()
 
     output_path = store_clear_sky_percentage(
         da_csp,
@@ -337,7 +334,7 @@ def test_store_clear_sky_percentage_sentinel2(
     )
 
     assert output_path == "gs://bucket/cogs/sentinel2_19HCD_uint8.tif"
-    da_csp.rio.to_raster.assert_called_once_with(
+    mock_to_raster.assert_called_once_with(
         "gs://bucket/cogs/sentinel2_19HCD_uint8.tif", driver="COG"
     )
     mock_logging.info.assert_called_once()
