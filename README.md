@@ -1,6 +1,6 @@
 # Parcelas 🌤️
 
-**Chile's Yearly Clear Sky Percentage** — an interactive map visualizing how often the sky is clear across Chile, built from Landsat 8/9 satellite imagery.
+**Chile's Yearly Clear Sky Percentage** — an interactive map visualizing how often the sky is clear across Chile, built from satellite imagery.
 
 ## Live Demo
 
@@ -8,13 +8,13 @@
 
 ## Overview
 
-Parcelas processes Landsat 8 and 9 QA pixel bands from the [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) to compute, per pixel, the fraction of cloud-free observations over a given year. The results are stored as Cloud Optimized GeoTIFFs (COGs) on Google Cloud Storage and served through a TiTiler mosaic API, rendered in a lightweight Leaflet frontend.
+Parcelas processes satellite classification bands from the [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) to compute, per pixel, the fraction of cloud-free observations over a given year. It currently supports Landsat 8/9 QA pixels and Sentinel-2 Scene Classification Layer data. The results are stored as Cloud Optimized GeoTIFFs (COGs) on Google Cloud Storage and served through a TiTiler mosaic API, rendered in a lightweight Leaflet frontend.
 
 ## Features
 
-- Per-pixel clear sky percentage computed from Landsat QA bands
-- WRS-2 tile-based processing pipeline
-- COG output clipped to WRS-2 tile boundaries
+- Per-pixel clear sky percentage computed from satellite classification bands
+- Landsat WRS-2 path/row and Sentinel-2 MGRS tile support
+- COG output clipped to the requested area of interest
 - Mosaic generation and validation via a FastAPI backend
 - Interactive Leaflet map with a coolwarm colorbar
 - API key authentication and IP-based rate limiting
@@ -74,6 +74,9 @@ Then navigate to `http://localhost:3001`.
 
 To fetch satellite data, compute clear sky percentages, and store a COG:
 
+For Landsat, pass a WRS-2 path and row. If no explicit clipping geometry is provided
+when storing, the pipeline uses the matching WRS-2 tile boundary.
+
 ```python
 from data_pipeline.clear_sky import run_clear_sky_pipeline
 from data_pipeline.shapefiles import get_wrs2_tile
@@ -91,9 +94,19 @@ output_path = run_clear_sky_pipeline(
 )
 ```
 
-For Sentinel-2, use the MGRS tile ID instead of WRS path/row:
+For Sentinel-2, pass an MGRS tile ID and the area of interest to process:
 
 ```python
+import geopandas as gpd
+from shapely.geometry import box
+
+from data_pipeline.clear_sky import run_clear_sky_pipeline
+
+shp = gpd.GeoDataFrame(
+    geometry=[box(-70.9, -33.7, -70.4, -33.3)],
+    crs="EPSG:4326",
+)
+
 output_path = run_clear_sky_pipeline(
     shp=shp,
     tile_id="T19HCD",
@@ -148,7 +161,7 @@ pytest tests/
 
 ## Tech Stack
 
-- **Data**: Landsat 8/9 via [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) · `odc-stac` · `rioxarray`
+- **Data**: Landsat 8/9 and Sentinel-2 via [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) · `odc-stac` · `rioxarray`
 - **Backend**: FastAPI · [TiTiler](https://developmentseed.org/titiler/) · `cogeo-mosaic` · `gcsfs`
 - **Frontend**: Leaflet.js
 - **Infrastructure**: Google Cloud Storage · Google Cloud Run · Docker
