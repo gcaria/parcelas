@@ -111,8 +111,11 @@ The `{tile_key}` placeholder standardizes output names, for example
 Once COGs are on GCS, generate a mosaic JSON via the API:
 
 ```bash
-curl -X POST "http://localhost:8080/mosaicjson/generate?save_to_gcs=true&glob_pattern=uint8" \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X POST "http://localhost:8080/mosaicjson/generate?sensor=landsat&save_to_gcs=true&glob_pattern=uint8" \
+  -H "X-API-Key: <api-key>"
+
+curl -X POST "http://localhost:8080/mosaicjson/generate?sensor=sentinel2&save_to_gcs=true&glob_pattern=uint8" \
+  -H "X-API-Key: <api-key>"
 ```
 
 ## API Reference

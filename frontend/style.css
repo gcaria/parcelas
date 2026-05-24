@@ -72,6 +72,35 @@ html, body, #map {
 }
 
 /* ===========================
+   Sensor Selector Control
+   =========================== */
+.leaflet-sensor-selector {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  font-family: sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.leaflet-sensor-selector label {
+  color: #333;
+  font-size: 12px;
+  font-weight: bold;
+}
+.leaflet-sensor-selector select {
+  color: #222;
+  background: #fff;
+  border: 1px solid #b8b8b8;
+  border-radius: 4px;
+  font-size: 13px;
+  height: 28px;
+  min-width: 112px;
+  padding: 3px 8px;
+}
+
+/* ===========================
    Debug Panel
    =========================== */
 #debug {

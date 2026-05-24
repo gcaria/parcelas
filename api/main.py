@@ -18,7 +18,8 @@ from titiler.mosaic.factory import MosaicTilerFactory
 RATE_LIMIT = 100  # requests
 RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
-PUBLIC_PATHS = {"/health"}
+SUPPORTED_SENSORS = {"landsat", "sentinel2"}
+PUBLIC_PATHS = {"/health", "/mosaicjson/sensors"}
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:3001",  # default for local dev only
@@ -92,6 +93,7 @@ def generate_mosaic(
     save_to_gcs: bool = False,
     gcs_path: Optional[str] = None,
     glob_pattern: str = "uint8",
+    sensor: str = "landsat",
 ):
     """
     Generate a mosaic JSON from COGs in GCS.
@@ -102,8 +104,15 @@ def generate_mosaic(
     if not COG_BASE_URL:
         return {"error": "COG_STORAGE_URL not configured"}
 
+    if sensor not in SUPPORTED_SENSORS:
+        supported_sensors = ", ".join(sorted(SUPPORTED_SENSORS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sensor '{sensor}'. Use one of: {supported_sensors}",
+        )
+
     if not tile_ids:
-        files = fs.glob(f"{COG_BASE_URL}/*_{glob_pattern}.tif")
+        files = fs.glob(f"{COG_BASE_URL}/{sensor}_*_{glob_pattern}.tif")
         cog_urls = [f"gs://{f}" for f in files]
     else:
         tile_ids_list = [t.strip() for t in tile_ids.split(",")]
@@ -114,7 +123,7 @@ def generate_mosaic(
 
     if save_to_gcs:
         if not gcs_path:
-            gcs_path = f"{COG_BASE_URL}/mosaics/mosaic_{glob_pattern}.json.gz"
+            gcs_path = f"{COG_BASE_URL}/mosaics/mosaic_{sensor}_{glob_pattern}.json.gz"
         json_str = mosaic_json.model_dump_json(indent=2)
         compressed_data = gzip.compress(json_str.encode("utf-8"))
         try:
@@ -129,6 +138,29 @@ def generate_mosaic(
             raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
 
     return mosaic_json.model_dump()
+
+
+@app.get("/mosaicjson/sensors")
+def list_mosaic_sensors(glob_pattern: str = "uint8"):
+    """List supported frontend mosaic sensor options."""
+    COG_BASE_URL = os.getenv("COG_STORAGE_URL", "").rstrip("/")
+    if not COG_BASE_URL:
+        return {"error": "COG_STORAGE_URL not configured"}
+
+    return {
+        "sensors": [
+            {
+                "id": "landsat",
+                "label": "Landsat",
+                "mosaic_url": f"{COG_BASE_URL}/mosaics/mosaic_landsat_{glob_pattern}.json.gz",
+            },
+            {
+                "id": "sentinel2",
+                "label": "Sentinel-2",
+                "mosaic_url": f"{COG_BASE_URL}/mosaics/mosaic_sentinel2_{glob_pattern}.json.gz",
+            },
+        ]
+    }
 
 
 @app.get("/mosaicjson/validate")

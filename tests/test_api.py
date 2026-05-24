@@ -43,6 +43,63 @@ def test_generate_missing_cog_storage_url():
         assert response.json() == {"error": "COG_STORAGE_URL not configured"}
 
 
+def test_generate_mosaic_filters_by_sensor():
+    with (
+        patch.dict("os.environ", {"COG_STORAGE_URL": "gs://bucket/cogs"}),
+        patch(
+            "api.main.fs.glob",
+            return_value=["bucket/cogs/sentinel2_19HCD_uint8.tif"],
+        ) as mock_glob,
+        patch("api.main.MosaicJSON") as mock_mosaic_json,
+    ):
+        mock_mosaic = mock_mosaic_json.from_urls.return_value
+        mock_mosaic.model_dump.return_value = {"tiles": {}}
+
+        response = client.post(
+            "/mosaicjson/generate?sensor=sentinel2",
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"tiles": {}}
+        mock_glob.assert_called_once_with("gs://bucket/cogs/sentinel2_*_uint8.tif")
+        mock_mosaic_json.from_urls.assert_called_once_with(
+            ["gs://bucket/cogs/sentinel2_19HCD_uint8.tif"]
+        )
+
+
+def test_generate_mosaic_rejects_unknown_sensor():
+    with patch.dict("os.environ", {"COG_STORAGE_URL": "gs://bucket/cogs"}):
+        response = client.post(
+            "/mosaicjson/generate?sensor=modis",
+            headers={"X-API-Key": "test-key"},
+        )
+
+        assert response.status_code == 400
+        assert "Unsupported sensor" in response.json()["detail"]
+
+
+def test_list_mosaic_sensors():
+    with patch.dict("os.environ", {"COG_STORAGE_URL": "gs://bucket/cogs"}):
+        response = client.get("/mosaicjson/sensors")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "sensors": [
+                {
+                    "id": "landsat",
+                    "label": "Landsat",
+                    "mosaic_url": "gs://bucket/cogs/mosaics/mosaic_landsat_uint8.json.gz",
+                },
+                {
+                    "id": "sentinel2",
+                    "label": "Sentinel-2",
+                    "mosaic_url": "gs://bucket/cogs/mosaics/mosaic_sentinel2_uint8.json.gz",
+                },
+            ]
+        }
+
+
 def test_rate_limit():
     for _ in range(100):
         client.get(
