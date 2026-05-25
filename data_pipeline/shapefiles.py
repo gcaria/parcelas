@@ -1,5 +1,5 @@
-"""A module for downloading and processing shapefiles related to the WRS-2 grid and the
-boundary of Chile.
+"""A module for downloading and processing shapefiles related to the WRS-2 grid, the
+Sentinel-2 MGRS tiling grid, and the boundary of Chile.
 """
 
 import io
@@ -10,6 +10,19 @@ import geopandas as gpd
 import requests
 
 URL_WRS2_GRID = "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/files/WRS2_descending_0.zip"
+
+# Official ESA Sentinel-2 MGRS tiling grid (KML format, ~5 MB).
+# Reading requires fiona with the KML/libkml driver compiled in.
+URL_MGRS_GRID = (
+    "https://sentinels.copernicus.eu/documents/247904/1955685/"
+    "S2A_OPER_GIP_TILPAR_MPC__20151209T140600_V20151001T000000_21000101T000000_B00.kml"
+    "/ec05e22c-a2bc-4a13-9e84-02d5257b09a0"
+)
+# Column in the ESA KML that carries the bare MGRS tile ID (e.g. "19HCD").
+MGRS_TILE_ID_COLUMN = "Name"
+# KML layer that contains the 100 km × 100 km Sentinel-2 tiles.
+MGRS_KML_LAYER = "Product Grid"
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -123,3 +136,46 @@ def get_wrs2_tile(path: int, row: int) -> gpd.GeoDataFrame:
     """
     wrs2_tiles = get_wrs2_grid()
     return wrs2_tiles[(wrs2_tiles["PATH"] == path) & (wrs2_tiles["ROW"] == row)]
+
+
+def get_mgrs_grid() -> gpd.GeoDataFrame:
+    """
+    Returns a GeoDataFrame containing the Sentinel-2 MGRS tiling grid.
+
+    The grid is downloaded from the official ESA Sentinel-2 product page (KML format).
+    Reading the KML requires fiona to be compiled with the KML/libkml driver.
+
+    Returns:
+        A GeoDataFrame with one row per 100 km × 100 km Sentinel-2 tile. The tile ID
+        is stored in the ``"Name"`` column (e.g. ``"19HCD"``).
+    """
+    return gpd.read_file(URL_MGRS_GRID, driver="KML", layer=MGRS_KML_LAYER)
+
+
+def get_mgrs_tile(tile_id: str) -> gpd.GeoDataFrame:
+    """
+    Returns a GeoDataFrame containing the MGRS tile that corresponds to the given
+    Sentinel-2 tile ID.
+
+    The tile ID is normalised before lookup: leading/trailing whitespace is stripped,
+    the string is upper-cased, and an optional leading ``"T"`` is removed so that both
+    ``"T19HCD"`` and ``"19HCD"`` resolve to the same tile.
+
+    Args:
+        tile_id: The Sentinel-2 MGRS tile ID, e.g. ``"19HCD"`` or ``"T19HCD"``.
+
+    Returns:
+        A GeoDataFrame containing the matching MGRS tile, or an empty GeoDataFrame if
+        the tile ID is not found in the grid.
+
+    Raises:
+        ValueError: If ``tile_id`` is empty after normalisation.
+    """
+    normalized = tile_id.strip().upper()
+    if normalized.startswith("T"):
+        normalized = normalized[1:]
+    if not normalized:
+        raise ValueError("tile_id must not be empty")
+
+    mgrs_tiles = get_mgrs_grid()
+    return mgrs_tiles[mgrs_tiles[MGRS_TILE_ID_COLUMN] == normalized]

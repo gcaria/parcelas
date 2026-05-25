@@ -11,6 +11,8 @@ from data_pipeline.shapefiles import (
     download_wrs2_grid,
     get_chile_boundary,
     get_chile_wrs2_tiles,
+    get_mgrs_grid,
+    get_mgrs_tile,
     get_wrs2_grid,
     get_wrs2_tile,
 )
@@ -23,6 +25,15 @@ def mock_wrs2_gdf():
     return gpd.GeoDataFrame(
         {"PATH": [233, 233], "ROW": [85, 86]},
         geometry=[box(-72, -39, -71, -38), box(-72, -40, -71, -39)],
+        crs="EPSG:4326",
+    )
+
+
+@pytest.fixture
+def mock_mgrs_gdf():
+    return gpd.GeoDataFrame(
+        {"Name": ["19HCD", "19HCC"]},
+        geometry=[box(-72, -39, -71, -38), box(-73, -39, -72, -38)],
         crs="EPSG:4326",
     )
 
@@ -98,6 +109,51 @@ def test_download_wrs2_grid_bad_zip(tmp_path):
     with patch("data_pipeline.shapefiles.requests.get", return_value=mock_response):
         with pytest.raises(ValueError, match="not a valid zip"):
             download_wrs2_grid(output_file=output)
+
+
+def test_get_mgrs_grid(mock_mgrs_gdf):
+    with patch(
+        "data_pipeline.shapefiles.gpd.read_file", return_value=mock_mgrs_gdf
+    ) as mock_read:
+        result = get_mgrs_grid()
+        assert isinstance(result, gpd.GeoDataFrame)
+        assert "Name" in result.columns
+        mock_read.assert_called_once()
+
+
+def test_get_mgrs_tile(mock_mgrs_gdf):
+    with patch("data_pipeline.shapefiles.get_mgrs_grid", return_value=mock_mgrs_gdf):
+        result = get_mgrs_tile("19HCD")
+        assert len(result) == 1
+        assert result.iloc[0]["Name"] == "19HCD"
+
+
+def test_get_mgrs_tile_with_t_prefix(mock_mgrs_gdf):
+    with patch("data_pipeline.shapefiles.get_mgrs_grid", return_value=mock_mgrs_gdf):
+        result = get_mgrs_tile("T19HCD")
+        assert len(result) == 1
+        assert result.iloc[0]["Name"] == "19HCD"
+
+
+def test_get_mgrs_tile_case_insensitive(mock_mgrs_gdf):
+    with patch("data_pipeline.shapefiles.get_mgrs_grid", return_value=mock_mgrs_gdf):
+        result = get_mgrs_tile("t19hcd")
+        assert len(result) == 1
+        assert result.iloc[0]["Name"] == "19HCD"
+
+
+def test_get_mgrs_tile_not_found(mock_mgrs_gdf):
+    with patch("data_pipeline.shapefiles.get_mgrs_grid", return_value=mock_mgrs_gdf):
+        result = get_mgrs_tile("99ZZZ")
+        assert len(result) == 0
+
+
+def test_get_mgrs_tile_empty_raises():
+    with pytest.raises(ValueError, match="must not be empty"):
+        get_mgrs_tile("T")
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        get_mgrs_tile("  ")
 
 
 def test_download_wrs2_grid_no_shp(tmp_path):

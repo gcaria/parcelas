@@ -23,13 +23,10 @@ def test_landsat_requires_path_and_row():
         run_tile.main(["--sensor", "landsat", "--path", "233"])
 
 
-def test_sentinel2_requires_tile_id_and_aoi():
-    """Validate Sentinel-2 tile identifiers and AOI input."""
+def test_sentinel2_requires_tile_id():
+    """Validate that --tile-id is required for Sentinel-2."""
     with pytest.raises(SystemExit):
         run_tile.main(["--sensor", "sentinel2", "--aoi-geojson", "aoi.geojson"])
-
-    with pytest.raises(SystemExit):
-        run_tile.main(["--sensor", "sentinel2", "--tile-id", "T19HCD"])
 
 
 @patch("data_pipeline.run_tile.run_clear_sky_pipeline")
@@ -106,6 +103,44 @@ def test_sentinel2_cli_loads_aoi_and_wires_pipeline_arguments(
 
     assert result == 0
     mock_read_file.assert_called_once_with("gs://bucket/aoi.geojson")
+    mock_run_clear_sky_pipeline.assert_called_once_with(
+        shp=sample_geometry,
+        path=None,
+        row=None,
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        time_range=run_tile.DEFAULT_TIME_RANGE,
+        bands=None,
+        chunks={"x": 512, "y": 512},
+        mask_water=True,
+        output_template="gs://bucket/cogs/{tile_key}.tif",
+        buffer=-500,
+    )
+
+
+@patch("data_pipeline.run_tile.run_clear_sky_pipeline")
+@patch("data_pipeline.run_tile.get_mgrs_tile")
+def test_sentinel2_cli_falls_back_to_mgrs_tile_geometry(
+    mock_get_mgrs_tile, mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
+):
+    """Use the MGRS tile footprint as AOI when --aoi-geojson is not provided."""
+    monkeypatch.delenv("DASK_SCHEDULER_ADDRESS", raising=False)
+    mock_get_mgrs_tile.return_value = sample_geometry
+    mock_run_clear_sky_pipeline.return_value = "gs://bucket/cogs/sentinel2_19HCD.tif"
+
+    result = run_tile.main(
+        [
+            "--sensor",
+            "sentinel2",
+            "--tile-id",
+            "T19HCD",
+            "--output-template",
+            "gs://bucket/cogs/{tile_key}.tif",
+        ]
+    )
+
+    assert result == 0
+    mock_get_mgrs_tile.assert_called_once_with("T19HCD")
     mock_run_clear_sky_pipeline.assert_called_once_with(
         shp=sample_geometry,
         path=None,

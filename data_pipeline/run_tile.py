@@ -11,7 +11,7 @@ from typing import Any
 import geopandas as gpd
 
 from data_pipeline.clear_sky import run_clear_sky_pipeline
-from data_pipeline.shapefiles import get_wrs2_tile
+from data_pipeline.shapefiles import get_mgrs_tile, get_wrs2_tile
 
 DEFAULT_TIME_RANGE = "2020-01-01/2020-12-31"
 DEFAULT_OUTPUT_TEMPLATE = "gs://my-bucket/cogs/{tile_key}_uint8.tif"
@@ -37,8 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--aoi-geojson",
         help=(
-            "AOI GeoJSON path readable by GeoPandas. Required for Sentinel-2. "
-            "Optional for Landsat, which defaults to the WRS-2 tile geometry."
+            "AOI GeoJSON path readable by GeoPandas. Optional for both sensors: "
+            "Landsat defaults to the WRS-2 tile geometry and Sentinel-2 defaults to "
+            "the MGRS tile geometry when this flag is omitted."
         ),
     )
     parser.add_argument(
@@ -91,14 +92,20 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     if args.sensor == "sentinel2" and not args.tile_id:
         parser.error("--tile-id is required when --sensor=sentinel2")
 
-    if args.sensor == "sentinel2" and not args.aoi_geojson:
-        parser.error("--aoi-geojson is required when --sensor=sentinel2")
-
 
 def load_aoi(args: argparse.Namespace) -> gpd.GeoDataFrame:
-    """Load the requested area of interest."""
+    """
+    Load the requested area of interest.
+
+    When ``--aoi-geojson`` is provided it is used for both sensors. Otherwise the
+    function falls back to the tile footprint: the WRS-2 grid for Landsat and the
+    MGRS grid for Sentinel-2.
+    """
     if args.aoi_geojson:
         return gpd.read_file(args.aoi_geojson)
+
+    if args.sensor == "sentinel2":
+        return get_mgrs_tile(args.tile_id)
 
     return get_wrs2_tile(args.path, args.row)
 
