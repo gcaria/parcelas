@@ -11,17 +11,16 @@ import requests
 
 URL_WRS2_GRID = "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/files/WRS2_descending_0.zip"
 
-# Official ESA Sentinel-2 MGRS tiling grid (KML format, ~5 MB).
+# Official ESA Sentinel-2 MGRS tiling grid (KML format, ~10 MB), hosted by NASA HLS.
 # Reading requires fiona with the KML/libkml driver compiled in.
 URL_MGRS_GRID = (
-    "https://sentinels.copernicus.eu/documents/247904/1955685/"
-    "S2A_OPER_GIP_TILPAR_MPC__20151209T140600_V20151001T000000_21000101T000000_B00.kml"
-    "/ec05e22c-a2bc-4a13-9e84-02d5257b09a0"
+    "https://hls.gsfc.nasa.gov/wp-content/uploads/2016/03/"
+    "S2A_OPER_GIP_TILPAR_MPC__20151209T095117_V20150622T000000_21000101T000000_B00.kml"
 )
 # Column in the ESA KML that carries the bare MGRS tile ID (e.g. "19HCD").
 MGRS_TILE_ID_COLUMN = "Name"
 # KML layer that contains the 100 km × 100 km Sentinel-2 tiles.
-MGRS_KML_LAYER = "Product Grid"
+MGRS_KML_LAYER = "Features"
 
 HEADERS = {
     "User-Agent": (
