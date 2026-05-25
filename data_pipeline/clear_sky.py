@@ -8,9 +8,8 @@ import odc.stac
 import planetary_computer
 import pystac_client
 import rioxarray  # noqa: F401
+import shapely
 import xarray
-
-from data_pipeline.shapefiles import get_wrs2_tile
 
 LANDSAT_CLEAR_SKY_QA_FLAGS = [
     21824,  # clear with lows set
@@ -145,6 +144,8 @@ def get_satellite_data(
 
     da_sat.attrs["sensor"] = sensor
     da_sat.attrs["clear_sky_flags"] = config["clear_sky_flags"]
+    da_sat.attrs["aoi_wkt"] = shp.union_all().wkt
+    da_sat.attrs["aoi_crs"] = str(shp.crs)
 
     return da_sat
 
@@ -289,22 +290,26 @@ def store_clear_sky_percentage(
     sensor: Sensor = "landsat",
     output_template: str = "{tile_key}.tif",
     buffer: int = -500,
-    clip_shp: "geopandas.GeoDataFrame | None" = None,
 ) -> str:
     """
     Store clear sky percentage data as a Cloud Optimized GeoTIFF (COG) file.
 
+    The clipping geometry is read from the ``"aoi_wkt"`` and ``"aoi_crs"``
+    attributes attached to ``da_csp`` by :func:`get_satellite_data`. The same
+    AOI that was used to fetch the data is therefore always used to clip the
+    output, shrunk inward by ``buffer`` metres.
+
     Args:
-        da_csp: An xarray DataArray containing the percentage of clear sky pixels for each spatial location.
+        da_csp: An xarray DataArray containing the percentage of clear sky pixels
+            for each spatial location. Must carry ``aoi_wkt`` and ``aoi_crs``
+            attributes set by :func:`get_satellite_data`.
         path: The WRS-2 path number. Required for Landsat.
         row: The WRS-2 row number. Required for Landsat.
         tile_id: The Sentinel-2 MGRS tile ID. Required for Sentinel-2.
         sensor: The satellite sensor. Supported values are "landsat" and "sentinel2".
         output_template: A template string for the output file name. Supports
             placeholders for tile_key, sensor, path, row, and tile_id.
-        buffer: The distance in meters to buffer the clipping geometry.
-        clip_shp: Optional clipping geometry. If omitted for Landsat, the WRS-2 tile
-            geometry is loaded from path and row.
+        buffer: The distance in metres to buffer the clipping geometry inward.
 
     Returns:
         The output file name or path.
@@ -315,15 +320,10 @@ def store_clear_sky_percentage(
         row=row,
         tile_id=tile_id,
     )
+    aoi_geom = shapely.from_wkt(da_csp.attrs["aoi_wkt"])
+    clip_shp = geopandas.GeoDataFrame(geometry=[aoi_geom], crs=da_csp.attrs["aoi_crs"])
     da_csp = (da_csp.where(da_csp > 0) * 100).fillna(0)
     da_csp = da_csp.astype("uint8").rio.write_nodata(0)
-
-    if clip_shp is None:
-        if sensor != "landsat":
-            raise ValueError("clip_shp is required when storing non-Landsat outputs")
-        if path is None or row is None:
-            raise ValueError("path and row are required to load Landsat clip geometry")
-        clip_shp = get_wrs2_tile(path, row)
 
     poly = _make_clip_geometry(clip_shp, da_csp.rio.crs, buffer)
 
@@ -397,7 +397,6 @@ def run_clear_sky_pipeline(
         sensor=sensor,
         output_template=output_template,
         buffer=buffer,
-        clip_shp=shp,
     )
 
 
