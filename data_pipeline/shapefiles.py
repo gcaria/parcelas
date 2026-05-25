@@ -8,6 +8,8 @@ import zipfile
 
 import geopandas as gpd
 import requests
+import shapely
+from shapely.ops import unary_union
 
 URL_WRS2_GRID = "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/files/WRS2_descending_0.zip"
 
@@ -137,18 +139,45 @@ def get_wrs2_tile(path: int, row: int) -> gpd.GeoDataFrame:
     return wrs2_tiles[(wrs2_tiles["PATH"] == path) & (wrs2_tiles["ROW"] == row)]
 
 
+def _extract_mgrs_geometry(geom):
+    """
+    Extract polygon geometry from a KML GEOMETRYCOLLECTION.
+
+    Each tile in the KML is encoded as a ``GEOMETRYCOLLECTION Z`` that bundles
+    the tile polygon with a ``Point`` label artefact. This helper discards the
+    point, merges any remaining polygon parts (needed for tiles that cross the
+    antimeridian), and returns a 2-D ``Polygon`` or ``MultiPolygon``.
+    """
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        return geom
+    polys = [g for g in geom.geoms if g.geom_type in ("Polygon", "MultiPolygon")]
+    if not polys:
+        return geom
+    return unary_union(polys) if len(polys) > 1 else polys[0]
+
+
 def get_mgrs_grid() -> gpd.GeoDataFrame:
     """
     Returns a GeoDataFrame containing the Sentinel-2 MGRS tiling grid.
 
-    The grid is downloaded from the official ESA Sentinel-2 product page (KML format).
-    Reading the KML requires fiona to be compiled with the KML/libkml driver.
+    The grid is downloaded from the NASA HLS tiling-system page (the official
+    ESA Sentinel-2 KML). The file is fetched with ``requests`` to avoid GDAL
+    network-parsing issues, and each tile's geometry is normalised to a plain
+    2-D ``Polygon`` or ``MultiPolygon``.
 
     Returns:
-        A GeoDataFrame with one row per 100 km × 100 km Sentinel-2 tile. The tile ID
-        is stored in the ``"Name"`` column (e.g. ``"19HCD"``).
+        A GeoDataFrame with one row per 100 km × 100 km Sentinel-2 tile. The
+        tile ID is stored in the ``"Name"`` column (e.g. ``"19HCD"``).
     """
-    return gpd.read_file(URL_MGRS_GRID, driver="KML", layer=MGRS_KML_LAYER)
+    response = requests.get(URL_MGRS_GRID, headers=HEADERS)
+    response.raise_for_status()
+    gdf = gpd.read_file(
+        io.BytesIO(response.content), driver="KML", layer=MGRS_KML_LAYER
+    )
+    gdf = gdf.copy()
+    gdf["geometry"] = gdf.geometry.map(_extract_mgrs_geometry)
+    gdf["geometry"] = shapely.force_2d(gdf.geometry.values)
+    return gdf
 
 
 def get_mgrs_tile(tile_id: str) -> gpd.GeoDataFrame:
