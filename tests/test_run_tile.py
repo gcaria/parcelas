@@ -30,13 +30,11 @@ def test_sentinel2_requires_tile_id():
 
 
 @patch("data_pipeline.run_tile.run_clear_sky_pipeline")
-@patch("data_pipeline.run_tile.get_wrs2_tile")
 def test_landsat_cli_wires_pipeline_arguments(
-    mock_get_wrs2_tile, mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
+    mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
 ):
     """Run a mocked Landsat job through the CLI."""
     monkeypatch.delenv("DASK_SCHEDULER_ADDRESS", raising=False)
-    mock_get_wrs2_tile.return_value = sample_geometry
     mock_run_clear_sky_pipeline.return_value = "gs://bucket/cogs/landsat_233_087.tif"
 
     result = run_tile.main(
@@ -62,13 +60,12 @@ def test_landsat_cli_wires_pipeline_arguments(
     )
 
     assert result == 0
-    mock_get_wrs2_tile.assert_called_once_with(233, 87)
     mock_run_clear_sky_pipeline.assert_called_once_with(
-        shp=sample_geometry,
         path=233,
         row=87,
         tile_id=None,
         sensor="landsat",
+        aoi_geojson=None,
         time_range="2020-01-01/2020-01-31",
         bands=None,
         chunks={"x": 128, "y": 256},
@@ -79,13 +76,11 @@ def test_landsat_cli_wires_pipeline_arguments(
 
 
 @patch("data_pipeline.run_tile.run_clear_sky_pipeline")
-@patch("data_pipeline.run_tile.gpd.read_file")
-def test_sentinel2_cli_loads_aoi_and_wires_pipeline_arguments(
-    mock_read_file, mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
+def test_sentinel2_cli_wires_pipeline_arguments(
+    mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
 ):
     """Run a mocked Sentinel-2 job through the CLI."""
     monkeypatch.delenv("DASK_SCHEDULER_ADDRESS", raising=False)
-    mock_read_file.return_value = sample_geometry
     mock_run_clear_sky_pipeline.return_value = "gs://bucket/cogs/sentinel2_19HCD.tif"
 
     result = run_tile.main(
@@ -102,51 +97,12 @@ def test_sentinel2_cli_loads_aoi_and_wires_pipeline_arguments(
     )
 
     assert result == 0
-    mock_read_file.assert_called_once_with("gs://bucket/aoi.geojson")
     mock_run_clear_sky_pipeline.assert_called_once_with(
-        shp=sample_geometry,
         path=None,
         row=None,
         tile_id="T19HCD",
         sensor="sentinel2",
-        time_range=run_tile.DEFAULT_TIME_RANGE,
-        bands=None,
-        chunks={"x": 512, "y": 512},
-        mask_water=True,
-        output_template="gs://bucket/cogs/{tile_key}.tif",
-        buffer=-500,
-    )
-
-
-@patch("data_pipeline.run_tile.run_clear_sky_pipeline")
-@patch("data_pipeline.run_tile.get_mgrs_tile")
-def test_sentinel2_cli_falls_back_to_mgrs_tile_geometry(
-    mock_get_mgrs_tile, mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
-):
-    """Use the MGRS tile footprint as AOI when --aoi-geojson is not provided."""
-    monkeypatch.delenv("DASK_SCHEDULER_ADDRESS", raising=False)
-    mock_get_mgrs_tile.return_value = sample_geometry
-    mock_run_clear_sky_pipeline.return_value = "gs://bucket/cogs/sentinel2_19HCD.tif"
-
-    result = run_tile.main(
-        [
-            "--sensor",
-            "sentinel2",
-            "--tile-id",
-            "T19HCD",
-            "--output-template",
-            "gs://bucket/cogs/{tile_key}.tif",
-        ]
-    )
-
-    assert result == 0
-    mock_get_mgrs_tile.assert_called_once_with("T19HCD")
-    mock_run_clear_sky_pipeline.assert_called_once_with(
-        shp=sample_geometry,
-        path=None,
-        row=None,
-        tile_id="T19HCD",
-        sensor="sentinel2",
+        aoi_geojson="gs://bucket/aoi.geojson",
         time_range=run_tile.DEFAULT_TIME_RANGE,
         bands=None,
         chunks={"x": 512, "y": 512},
@@ -178,9 +134,8 @@ def test_dask_client_created_from_scheduler_env(monkeypatch):
 
 
 @patch("data_pipeline.run_tile.run_clear_sky_pipeline")
-@patch("data_pipeline.run_tile.get_wrs2_tile")
 def test_dask_client_is_closed_after_pipeline(
-    mock_get_wrs2_tile, mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
+    mock_run_clear_sky_pipeline, sample_geometry, monkeypatch
 ):
     """Close a distributed client after the tile job completes."""
     mock_client = Mock()
@@ -190,7 +145,6 @@ def test_dask_client_is_closed_after_pipeline(
         "distributed",
         SimpleNamespace(Client=Mock(return_value=mock_client)),
     )
-    mock_get_wrs2_tile.return_value = sample_geometry
     mock_run_clear_sky_pipeline.return_value = "gs://bucket/cogs/landsat_233_087.tif"
 
     run_tile.main(["--sensor", "landsat", "--path", "233", "--row", "87"])

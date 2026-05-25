@@ -11,6 +11,8 @@ import rioxarray  # noqa: F401
 import shapely
 import xarray
 
+from data_pipeline.shapefiles import get_mgrs_tile, get_wrs2_tile
+
 LANDSAT_CLEAR_SKY_QA_FLAGS = [
     21824,  # clear with lows set
     21826,  # dilated cloud over land
@@ -344,12 +346,39 @@ def store_clear_sky_percentage(
     return fname
 
 
+def _load_aoi(
+    sensor: Sensor,
+    path: int | None,
+    row: int | None,
+    tile_id: str | None,
+    aoi_geojson: str | None,
+) -> "geopandas.GeoDataFrame":
+    """
+    Load the area of interest for a pipeline run.
+
+    Resolution order:
+    1. An explicit ``aoi_geojson`` path (read by GeoPandas, supports local files
+       and cloud URIs such as ``gs://``).
+    2. The MGRS tile footprint for Sentinel-2.
+    3. The WRS-2 tile footprint for Landsat.
+    """
+    if aoi_geojson is not None:
+        return geopandas.read_file(aoi_geojson)
+    if sensor == "sentinel2":
+        if tile_id is None:
+            raise ValueError("tile_id is required when sensor='sentinel2'")
+        return get_mgrs_tile(tile_id)
+    if path is None or row is None:
+        raise ValueError("path and row are required when sensor='landsat'")
+    return get_wrs2_tile(path, row)
+
+
 def run_clear_sky_pipeline(
-    shp: "geopandas.GeoDataFrame",
     path: int | None = None,
     row: int | None = None,
     tile_id: str | None = None,
     sensor: Sensor = "landsat",
+    aoi_geojson: str | None = None,
     time_range: str = "2020-01-01/2020-12-31",
     bands: List[str] | None = None,
     chunks: dict = {"x": 512, "y": 512},
@@ -361,11 +390,13 @@ def run_clear_sky_pipeline(
     Fetch satellite data, compute clear sky percentage, and store it as a COG.
 
     Args:
-        shp: A GeoDataFrame containing the geometry of the area of interest.
         path: The WRS-2 path number. Required for Landsat.
         row: The WRS-2 row number. Required for Landsat.
         tile_id: The Sentinel-2 MGRS tile ID. Required for Sentinel-2.
         sensor: The satellite sensor. Supported values are "landsat" and "sentinel2".
+        aoi_geojson: Optional path to a GeoJSON file (local or cloud URI) to use as
+            the area of interest. When omitted, the tile footprint is used (MGRS for
+            Sentinel-2, WRS-2 for Landsat).
         time_range: The time range for which to fetch data, in the format "YYYY-MM-DD/YYYY-MM-DD".
         bands: A list of band names to fetch.
         chunks: A dictionary specifying chunk sizes for xarray.
@@ -377,6 +408,13 @@ def run_clear_sky_pipeline(
     Returns:
         The output file name or path.
     """
+    shp = _load_aoi(
+        sensor=sensor,
+        path=path,
+        row=row,
+        tile_id=tile_id,
+        aoi_geojson=aoi_geojson,
+    )
     da_sat = get_satellite_data(
         shp=shp,
         path=path,

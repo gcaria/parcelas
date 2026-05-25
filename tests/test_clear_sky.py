@@ -9,6 +9,7 @@ import xarray as xr
 from shapely.geometry import box
 
 from data_pipeline.clear_sky import (
+    _load_aoi,
     compute_clear_sky_percentage,
     format_satellite_tile_key,
     get_jrc_surface_water,
@@ -345,7 +346,9 @@ def test_store_clear_sky_percentage_sentinel2(
 @patch("data_pipeline.clear_sky.store_clear_sky_percentage")
 @patch("data_pipeline.clear_sky.compute_clear_sky_percentage")
 @patch("data_pipeline.clear_sky.get_satellite_data")
+@patch("data_pipeline.clear_sky._load_aoi")
 def test_run_clear_sky_pipeline(
+    mock_load_aoi,
     mock_get_satellite_data,
     mock_compute_clear_sky_percentage,
     mock_store_clear_sky_percentage,
@@ -354,6 +357,7 @@ def test_run_clear_sky_pipeline(
     """Test the unified clear sky pipeline."""
     mock_da_sat = Mock()
     mock_da_csp = Mock()
+    mock_load_aoi.return_value = sample_geometry
     mock_get_satellite_data.return_value = mock_da_sat
     mock_compute_clear_sky_percentage.return_value = mock_da_csp
     mock_store_clear_sky_percentage.return_value = (
@@ -361,7 +365,6 @@ def test_run_clear_sky_pipeline(
     )
 
     result = run_clear_sky_pipeline(
-        shp=sample_geometry,
         tile_id="T19HCD",
         sensor="sentinel2",
         time_range="2020-01-01/2020-12-31",
@@ -369,6 +372,13 @@ def test_run_clear_sky_pipeline(
     )
 
     assert result == "gs://bucket/cogs/sentinel2_19HCD.tif"
+    mock_load_aoi.assert_called_once_with(
+        sensor="sentinel2",
+        path=None,
+        row=None,
+        tile_id="T19HCD",
+        aoi_geojson=None,
+    )
     mock_get_satellite_data.assert_called_once_with(
         shp=sample_geometry,
         path=None,
@@ -390,3 +400,43 @@ def test_run_clear_sky_pipeline(
         output_template="gs://bucket/cogs/{tile_key}.tif",
         buffer=-500,
     )
+
+
+def test_load_aoi_uses_geojson_when_provided(sample_geometry):
+    """Explicit aoi_geojson takes priority over tile footprint."""
+    with patch(
+        "data_pipeline.clear_sky.geopandas.read_file", return_value=sample_geometry
+    ) as mock_read:
+        result = _load_aoi(
+            sensor="landsat",
+            path=233,
+            row=85,
+            tile_id=None,
+            aoi_geojson="gs://bucket/aoi.geojson",
+        )
+        mock_read.assert_called_once_with("gs://bucket/aoi.geojson")
+        assert result is sample_geometry
+
+
+def test_load_aoi_falls_back_to_mgrs_tile_for_sentinel2(sample_geometry):
+    """Sentinel-2 without aoi_geojson loads the MGRS tile footprint."""
+    with patch(
+        "data_pipeline.clear_sky.get_mgrs_tile", return_value=sample_geometry
+    ) as mock_tile:
+        result = _load_aoi(
+            sensor="sentinel2", path=None, row=None, tile_id="T19HCD", aoi_geojson=None
+        )
+        mock_tile.assert_called_once_with("T19HCD")
+        assert result is sample_geometry
+
+
+def test_load_aoi_falls_back_to_wrs2_tile_for_landsat(sample_geometry):
+    """Landsat without aoi_geojson loads the WRS-2 tile footprint."""
+    with patch(
+        "data_pipeline.clear_sky.get_wrs2_tile", return_value=sample_geometry
+    ) as mock_tile:
+        result = _load_aoi(
+            sensor="landsat", path=233, row=85, tile_id=None, aoi_geojson=None
+        )
+        mock_tile.assert_called_once_with(233, 85)
+        assert result is sample_geometry

@@ -8,10 +8,7 @@ import os
 from collections.abc import Sequence
 from typing import Any
 
-import geopandas as gpd
-
 from data_pipeline.clear_sky import run_clear_sky_pipeline
-from data_pipeline.shapefiles import get_mgrs_tile, get_wrs2_tile
 
 DEFAULT_TIME_RANGE = "2020-01-01/2020-12-31"
 DEFAULT_OUTPUT_TEMPLATE = "gs://my-bucket/cogs/{tile_key}_uint8.tif"
@@ -93,23 +90,6 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         parser.error("--tile-id is required when --sensor=sentinel2")
 
 
-def load_aoi(args: argparse.Namespace) -> gpd.GeoDataFrame:
-    """
-    Load the requested area of interest.
-
-    When ``--aoi-geojson`` is provided it is used for both sensors. Otherwise the
-    function falls back to the tile footprint: the WRS-2 grid for Landsat and the
-    MGRS grid for Sentinel-2.
-    """
-    if args.aoi_geojson:
-        return gpd.read_file(args.aoi_geojson)
-
-    if args.sensor == "sentinel2":
-        return get_mgrs_tile(args.tile_id)
-
-    return get_wrs2_tile(args.path, args.row)
-
-
 def connect_dask_from_env() -> Any | None:
     """Connect to a Dask scheduler when DASK_SCHEDULER_ADDRESS is set."""
     scheduler_address = os.environ.get("DASK_SCHEDULER_ADDRESS")
@@ -133,11 +113,11 @@ def run_from_args(args: argparse.Namespace) -> str:
     client = connect_dask_from_env()
     try:
         output_path = run_clear_sky_pipeline(
-            shp=load_aoi(args),
             path=args.path,
             row=args.row,
             tile_id=args.tile_id,
             sensor=args.sensor,
+            aoi_geojson=args.aoi_geojson,
             time_range=args.time_range,
             bands=None,
             chunks={"x": args.chunk_x, "y": args.chunk_y},
