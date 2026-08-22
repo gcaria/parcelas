@@ -447,7 +447,7 @@ def test_run_clear_sky_pipeline_processes_sentinel2_to_cog(
 
     assert result == str(tmp_path / "sentinel2_19HCD.tif")
     assert (tmp_path / "sentinel2_19HCD.tif").is_file()
-    output = xr.open_dataarray(result, engine="rasterio")
+    output = xr.open_dataarray(result, engine="rasterio", mask_and_scale=False)
     try:
         np.testing.assert_array_equal(
             output.squeeze().values,
