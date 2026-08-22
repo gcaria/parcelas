@@ -1,0 +1,39 @@
+name: Update progressive Sentinel preview
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: progressive-sentinel-preview
+  cancel-in-progress: false
+
+jobs:
+  update-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Rebuild shared mosaic from completed tiles
+        run: |
+          python -m data_pipeline.create_progressive_mosaic \
+            --output gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz

@@ -2,5 +2,5 @@ const API_KEY = "REPLACE_ME_KEY";
 const DEFAULT_SENSOR = "landsat";
 const SENSOR_MOSAIC_URLS = {
   landsat: "gs://parcelas-wrs2/mosaics/mosaic_masked.json.gz",
-  sentinel2: "gs://parcelas-wrs2/mosaics/mosaic_sentinel2_uint8.json.gz",
+  sentinel2: "gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz",
 };
