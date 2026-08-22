@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import app, rate_limit_storage
+from api.main import _is_rate_limit_exempt, app, rate_limit_storage
 
 client = TestClient(app)
 
@@ -136,3 +136,8 @@ def test_rate_limit_isolated_by_forwarded_client_ip():
         ).status_code
         != 429
     )
+
+
+def test_tile_reads_are_exempt_from_ip_rate_limit():
+    assert _is_rate_limit_exempt("/mosaicjson/tiles/WebMercatorQuad/8/77/152.png")
+    assert not _is_rate_limit_exempt("/mosaicjson/validate")

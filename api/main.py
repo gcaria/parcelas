@@ -20,6 +20,7 @@ RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
 SUPPORTED_SENSORS = {"landsat", "sentinel2"}
 PUBLIC_PATHS = {"/health", "/mosaicjson/sensors"}
+RATE_LIMIT_EXEMPT_PREFIXES = ("/mosaicjson/tiles/",)
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:3001",  # default for local dev only
@@ -75,10 +76,20 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _is_rate_limit_exempt(path: str) -> bool:
+    return path in PUBLIC_PATHS or path.startswith(RATE_LIMIT_EXEMPT_PREFIXES)
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting based on client IP, except for public paths."""
-    if request.url.path in PUBLIC_PATHS:
+    """
+    Rate-limit non-tile API operations by client IP.
+
+    Cloud Run does not reliably expose the original address to the application, so
+    limiting browser tile reads here can put every viewer in one shared bucket. Tile
+    requests remain protected by the API-key middleware.
+    """
+    if _is_rate_limit_exempt(request.url.path):
         return await call_next(request)
 
     client_ip = _client_ip(request)

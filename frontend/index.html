@@ -262,6 +262,8 @@
         mosaicLayer = L.tileLayer(tileUrl, {
           tileSize: 256,
           opacity: 0.8,
+          updateWhenZooming: false,
+          keepBuffer: 0,
         }).addTo(map);
         attachMosaicLayerEvents(mosaicLayer);
       };
@@ -296,10 +298,15 @@
 
       debugLog("Adding sensor selector...", "info");
       new SensorSelector().addTo(map);
-      setSensor(DEFAULT_SELECTED_SENSOR);
-      if (previewMosaicUrl) {
-        zoomToMosaic(previewMosaicUrl);
-      }
+      const initializeMosaic = async () => {
+        // Position the map before adding a preview layer. Adding it first makes
+        // Leaflet request tiles for every intermediate zoom level.
+        if (previewMosaicUrl) {
+          await zoomToMosaic(previewMosaicUrl);
+        }
+        setSensor(DEFAULT_SELECTED_SENSOR);
+      };
+      initializeMosaic();
 
       debugLog("Adding github link...", "info");
       new GitHubLink().addTo(map);
