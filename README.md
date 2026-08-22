@@ -119,6 +119,13 @@ output_path = run_clear_sky_pipeline(
 The `{tile_key}` placeholder standardizes output names, for example
 `landsat_233_087_uint8.tif` and `sentinel2_19HCD_uint8.tif`.
 
+### Running a Tile on GitHub Actions
+
+The **Run tile pipeline** workflow can process a tile without a local setup. In
+the repository's Actions tab, select the workflow, choose **Run workflow**, and
+provide either a Sentinel-2 tile ID or a Landsat path and row. The generated COG
+is available from the completed run as an artifact for 14 days.
+
 ### Generating a Mosaic
 
 Once COGs are on GCS, generate a mosaic JSON via the API:

@@ -1,0 +1,118 @@
+name: Run tile pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      sensor:
+        description: Satellite sensor
+        required: true
+        type: choice
+        options:
+          - sentinel2
+          - landsat
+      tile_id:
+        description: Sentinel-2 MGRS tile ID (for example, T19HCD)
+        required: false
+        type: string
+      path:
+        description: Landsat WRS-2 path
+        required: false
+        type: string
+      row:
+        description: Landsat WRS-2 row
+        required: false
+        type: string
+      time_range:
+        description: STAC datetime range
+        required: true
+        default: 2020-01-01/2020-12-31
+        type: string
+      mask_water:
+        description: Mask persistent surface water using JRC data
+        required: true
+        default: true
+        type: boolean
+      buffer:
+        description: Inward clipping buffer in metres
+        required: true
+        default: "-500"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-tile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      SENSOR: ${{ inputs.sensor }}
+      TILE_ID: ${{ inputs.tile_id }}
+      WRS_PATH: ${{ inputs.path }}
+      WRS_ROW: ${{ inputs.row }}
+      TIME_RANGE: ${{ inputs.time_range }}
+      MASK_WATER: ${{ inputs.mask_water }}
+      BUFFER: ${{ inputs.buffer }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gdal-bin \
+            libgdal-dev \
+            libspatialindex-dev \
+            --no-install-recommends
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate tile inputs
+        run: |
+          if [[ "$SENSOR" == "sentinel2" && -z "$TILE_ID" ]]; then
+            echo "tile_id is required for Sentinel-2" >&2
+            exit 1
+          fi
+          if [[ "$SENSOR" == "landsat" && ( -z "$WRS_PATH" || -z "$WRS_ROW" ) ]]; then
+            echo "path and row are required for Landsat" >&2
+            exit 1
+          fi
+
+      - name: Run clear-sky pipeline
+        run: |
+          mkdir -p output
+          args=(
+            --sensor "$SENSOR"
+            --time-range "$TIME_RANGE"
+            --output-template "output/{tile_key}_uint8.tif"
+            --buffer "$BUFFER"
+          )
+
+          if [[ "$SENSOR" == "sentinel2" ]]; then
+            args+=(--tile-id "$TILE_ID")
+          else
+            args+=(--path "$WRS_PATH" --row "$WRS_ROW")
+          fi
+
+          if [[ "$MASK_WATER" != "true" ]]; then
+            args+=(--no-mask-water)
+          fi
+
+          python -m data_pipeline.run_tile "${args[@]}"
+
+      - name: Upload generated COG
+        uses: actions/upload-artifact@v4
+        with:
+          name: clear-sky-${{ inputs.sensor }}-${{ inputs.tile_id || format('{0}-{1}', inputs.path, inputs.row) }}
+          path: output/*.tif
+          if-no-files-found: error
+          retention-days: 14
