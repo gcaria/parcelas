@@ -8,15 +8,19 @@
 
 ## Overview
 
-Parcelas processes satellite classification bands from the [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) to compute, per pixel, the fraction of cloud-free observations over a given year. It currently supports Landsat 8/9 QA pixels and Sentinel-2 Scene Classification Layer data. The results are stored as Cloud Optimized GeoTIFFs (COGs) on Google Cloud Storage and served through a TiTiler mosaic API, rendered in a lightweight Leaflet frontend.
+Parcelas processes satellite classification bands from the [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/) to compute, per pixel, the fraction of valid observations that are cloud-free. It supports Landsat 8/9 QA pixels and Sentinel-2 Scene Classification Layer (SCL) data. Results are stored as Cloud Optimized GeoTIFFs (COGs) on Google Cloud Storage, served through a TiTiler mosaic API, and rendered in a lightweight Leaflet frontend.
 
 ## Features
 
 - Per-pixel clear sky percentage computed from satellite classification bands
 - Landsat WRS-2 path/row and Sentinel-2 MGRS tile support
 - COG output clipped to the requested area of interest
+- Valid-observation denominators that exclude nodata and masked water pixels
+- Sequential, observation-weighted multi-year Sentinel-2 processing
+- Progressive Sentinel-2 mosaics assembled from completed tile workflows
 - Mosaic generation and validation via a FastAPI backend
-- Interactive Leaflet map with a coolwarm colorbar
+- Interactive Leaflet map with Landsat/Sentinel selection, data visibility, and street/satellite basemap controls
+- A responsive discrete 0–100% clear-sky colorbar
 - API key authentication and IP-based rate limiting
 - Docker-based local development
 
@@ -41,7 +45,6 @@ cd parcelas
 
 ```bash
 cp frontend/config.js.example frontend/config.js
-# Edit config.js and set your API_KEY
 ```
 
 3. **Start the API server**
@@ -66,7 +69,7 @@ Then navigate to `http://localhost:3001`.
 
 | Variable | Description | Default |
 |---|---|---|
-| `API_KEY` | Secret key for authenticating API requests | — |
+| `API_KEY` | Server-side secret for administrative API requests | — |
 | `COG_STORAGE_URL` | GCS path to COG files (e.g. `gs://my-bucket/cogs`) | — |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3001` |
 
@@ -74,41 +77,28 @@ Then navigate to `http://localhost:3001`.
 
 To fetch satellite data, compute clear sky percentages, and store a COG:
 
-For Landsat, pass a WRS-2 path and row. If no explicit clipping geometry is provided
-when storing, the pipeline uses the matching WRS-2 tile boundary.
+For Landsat, pass a WRS-2 path and row. The pipeline uses the matching WRS-2
+tile boundary when `aoi_geojson` is omitted.
 
 ```python
 from data_pipeline.clear_sky import run_clear_sky_pipeline
-from data_pipeline.shapefiles import get_wrs2_tile
-
-path, row = 233, 87
-shp = get_wrs2_tile(path, row)
 
 output_path = run_clear_sky_pipeline(
-    shp=shp,
-    path=path,
-    row=row,
+    path=233,
+    row=87,
     sensor="landsat",
     time_range="2020-01-01/2020-12-31",
     output_template="gs://my-bucket/cogs/{tile_key}_uint8.tif",
 )
 ```
 
-For Sentinel-2, pass an MGRS tile ID and the area of interest to process:
+For Sentinel-2, pass an MGRS tile ID. The MGRS tile footprint is used when
+`aoi_geojson` is omitted:
 
 ```python
-import geopandas as gpd
-from shapely.geometry import box
-
 from data_pipeline.clear_sky import run_clear_sky_pipeline
 
-shp = gpd.GeoDataFrame(
-    geometry=[box(-70.9, -33.7, -70.4, -33.3)],
-    crs="EPSG:4326",
-)
-
 output_path = run_clear_sky_pipeline(
-    shp=shp,
     tile_id="T19HCD",
     sensor="sentinel2",
     time_range="2020-01-01/2020-12-31",
@@ -118,6 +108,16 @@ output_path = run_clear_sky_pipeline(
 
 The `{tile_key}` placeholder standardizes output names, for example
 `landsat_233_087_uint8.tif` and `sentinel2_19HCD_uint8.tif`.
+
+The equivalent command-line entry point is:
+
+```bash
+python -m data_pipeline.run_tile \
+  --sensor sentinel2 \
+  --tile-id T19HCD \
+  --time-range 2020-01-01/2020-12-31 \
+  --output-template 'output/{tile_key}_uint8.tif'
+```
 
 ### Running a Tile on GitHub Actions
 
@@ -131,6 +131,51 @@ secret containing credentials that can write to the preview bucket, then enable
 `publish_preview` when starting the workflow. The completed run summary links to
 the frontend with its temporary one-tile mosaic selected. Configure a lifecycle
 rule on the bucket's `previews/` prefix to remove old preview files.
+
+### Running Multiple Years Sequentially
+
+The **Run multi-year Sentinel pipeline** workflow processes complete calendar
+years one at a time to avoid retaining the full temporal stack in memory. Each
+year is reduced to two intermediate bands:
+
+- `clear_count`: clear observations per pixel
+- `valid_count`: valid observations per pixel
+
+The final percentage is calculated as
+`100 × sum(clear_count) / sum(valid_count)`. Annual percentages are not averaged,
+because observation counts vary by year and pixel. The merge reads and writes
+small raster windows, and comparison outputs are published separately from the
+one-year regional mosaic.
+
+The same operation can be run from the command line:
+
+```bash
+python -m data_pipeline.run_multiyear \
+  --tile-id T19HCD \
+  --start-year 2020 \
+  --end-year 2024 \
+  --output output/sentinel2_19HCD_2020_2024_uint8.tif
+```
+
+### Progressive Sentinel Preview
+
+The **Update progressive Sentinel preview** workflow runs every five minutes. It
+discovers successful Sentinel preview COGs, keeps the greatest GitHub run ID for
+each MGRS tile, and republishes the shared mosaic at:
+
+```text
+gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz
+```
+
+The deployed frontend uses this shared mosaic for its Sentinel-2 layer. The
+deployed Landsat layer uses
+`gs://parcelas-wrs2/mosaics/mosaic_masked.json.gz`. A one-off preview can be
+opened without changing frontend configuration by passing `sensor` and `mosaic`
+query parameters:
+
+```text
+https://gcaria.github.io/parcelas/?sensor=sentinel2&mosaic=gs://bucket/path/mosaic.json.gz
+```
 
 ### Generating a Mosaic
 
@@ -146,25 +191,36 @@ curl -X POST "http://localhost:8080/mosaicjson/generate?sensor=sentinel2&save_to
 
 ## API Reference
 
-All endpoints (except `/health`) require an `X-API-Key` header or `api_key` query parameter. Rate limit: 100 requests per 60 seconds per IP.
+The read-only `/health`, `/mosaicjson/sensors`, `/mosaicjson/info`, and tile
+routes are public so the static frontend does not contain an administrative
+secret. Mosaic generation and validation require an `X-API-Key` header or
+`api_key` query parameter. Non-tile API operations are limited to 100 requests
+per 60 seconds per client. Tile reads are exempt from the in-process IP limiter
+because Cloud Run does not reliably expose distinct client addresses to the
+application.
 
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/health` | Health check (public) |
+| `GET` | `/mosaicjson/sensors` | List configured sensor mosaics (public) |
 | `POST` | `/mosaicjson/generate` | Generate and optionally save a mosaic JSON from COGs |
 | `GET` | `/mosaicjson/validate` | Validate an existing mosaic JSON on GCS |
-| `GET` | `/mosaicjson/tiles/{z}/{x}/{y}.png` | Serve map tiles from a mosaic |
+| `GET` | `/mosaicjson/info` | Return mosaic bounds and zoom metadata |
+| `GET` | `/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png` | Serve map tiles from a mosaic |
 
 ### Tile URL Example
 
-```
+```text
 /mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png
   ?url=gs://my-bucket/mosaics/mosaic_uint8.json.gz
   &rescale=0,100
   &colormap_name=coolwarm
   &clamp=true
-  &api_key=YOUR_API_KEY
 ```
+
+The frontend uses a ten-class discrete color table after rescaling values to
+0–100. Direct API requests can use a named colormap as shown above or supply a
+custom `colormap` lookup table.
 
 ## Running Tests
 

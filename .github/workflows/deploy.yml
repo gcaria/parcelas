@@ -17,10 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Inject secrets into config
-        run: |
-          sed -i "s|REPLACE_ME_KEY|${{ secrets.API_KEY }}|g" frontend/config.js.example
-          mv frontend/config.js.example frontend/config.js
+      - name: Create frontend config
+        run: cp frontend/config.js.example frontend/config.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

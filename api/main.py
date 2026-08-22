@@ -19,7 +19,8 @@ RATE_LIMIT = 100  # requests
 RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
 SUPPORTED_SENSORS = {"landsat", "sentinel2"}
-PUBLIC_PATHS = {"/health", "/mosaicjson/sensors"}
+PUBLIC_PATHS = {"/health", "/mosaicjson/sensors", "/mosaicjson/info"}
+PUBLIC_PATH_PREFIXES = ("/mosaicjson/tiles/",)
 RATE_LIMIT_EXEMPT_PREFIXES = ("/mosaicjson/tiles/",)
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
@@ -47,9 +48,9 @@ app.add_middleware(
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    """Check for API key in header or query param, except for public paths."""
+    """Require the administrative API key except on read-only public routes."""
 
-    if request.url.path in PUBLIC_PATHS:
+    if _is_public_path(request.url.path):
         return await call_next(request)
 
     # Check header first, then fall back to query param
@@ -65,6 +66,11 @@ async def api_key_middleware(request: Request, call_next):
 
 # Simple in-memory rate limiter
 rate_limit_storage: dict = defaultdict(list)
+
+
+def _is_public_path(path: str) -> bool:
+    """Return whether a route is safe for unauthenticated frontend reads."""
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PATH_PREFIXES)
 
 
 def _client_ip(request: Request) -> str:

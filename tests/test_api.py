@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import _is_rate_limit_exempt, app, rate_limit_storage
+from api.main import _is_public_path, _is_rate_limit_exempt, app, rate_limit_storage
 
 client = TestClient(app)
 
@@ -33,6 +33,25 @@ def test_valid_api_key():
     )
     # should pass auth, fail on GCS (which is mocked)
     assert response.status_code != 401
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/health",
+        "/mosaicjson/sensors",
+        "/mosaicjson/info",
+        "/mosaicjson/tiles/WebMercatorQuad/8/77/152.png",
+    ],
+)
+def test_frontend_read_routes_are_public(path):
+    assert _is_public_path(path)
+
+
+@pytest.mark.parametrize("path", ["/mosaicjson/generate", "/mosaicjson/validate"])
+def test_administrative_routes_are_private(path):
+    assert not _is_public_path(path)
+    assert client.request("POST", path).status_code == 401
 
 
 def test_generate_missing_cog_storage_url():

@@ -1,4 +1,3 @@
-const API_KEY = "REPLACE_ME_KEY";
 const DEFAULT_SENSOR = "landsat";
 const SENSOR_MOSAIC_URLS = {
   landsat: "gs://parcelas-wrs2/mosaics/mosaic_masked.json.gz",
