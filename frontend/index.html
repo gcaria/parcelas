@@ -235,7 +235,7 @@
         },
       );
 
-      L.control
+      const layerControl = L.control
         .layers(
           {
             Streets: streetBasemap,
@@ -302,8 +302,10 @@
           return;
         }
 
+        const dataIsVisible = mosaicLayer ? map.hasLayer(mosaicLayer) : true;
         if (mosaicLayer) {
           map.removeLayer(mosaicLayer);
+          layerControl.removeLayer(mosaicLayer);
         }
 
         tilesLoaded = 0;
@@ -319,8 +321,12 @@
           pane: "clearSkyPane",
           updateWhenZooming: false,
           keepBuffer: 0,
-        }).addTo(map);
+        });
         attachMosaicLayerEvents(mosaicLayer);
+        layerControl.addOverlay(mosaicLayer, "Clear-sky data");
+        if (dataIsVisible) {
+          mosaicLayer.addTo(map);
+        }
       };
 
       const zoomToMosaic = async (mosaicUrl) => {
