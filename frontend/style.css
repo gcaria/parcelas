@@ -23,18 +23,22 @@ html, body, #map {
   margin-bottom: 5px;
   font-weight: bold;
   text-align: center;
-  width: 180px;
+  width: 340px;
 }
 .leaflet-colorbar .colorbar-gradient {
-  width: 180px;
-  height: 14px;
-  background: linear-gradient(to right, #1f1a85, #3f6fcf, #e8e8e8, #d45a3a, #7d0c02);
+  display: flex;
+  width: 340px;
+  height: 18px;
   border-radius: 3px;
+  overflow: hidden;
+}
+.leaflet-colorbar .colorbar-step {
+  flex: 1;
 }
 .leaflet-colorbar .colorbar-labels {
   display: flex;
   justify-content: space-between;
-  width: 180px;
+  width: 340px;
   margin-top: 4px;
   font-size: 11px;
   font-family: sans-serif;
@@ -46,7 +50,16 @@ html, body, #map {
   color: #888;
   margin-top: 4px;
   text-align: center;
-  width: 180px;
+  width: 340px;
+}
+
+@media (max-width: 520px) {
+  .leaflet-colorbar .colorbar-title,
+  .leaflet-colorbar .colorbar-gradient,
+  .leaflet-colorbar .colorbar-labels,
+  .leaflet-colorbar .colorbar-subtext {
+    width: 260px;
+  }
 }
 
 /* ===========================

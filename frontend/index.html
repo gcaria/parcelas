@@ -70,6 +70,22 @@
         landsat: "Landsat",
         sentinel2: "Sentinel-2",
       };
+      const CLEAR_SKY_COLORS = [
+        [59, 76, 192, 255],
+        [68, 90, 204, 255],
+        [88, 117, 214, 255],
+        [120, 145, 220, 255],
+        [157, 170, 225, 255],
+        [192, 192, 192, 255],
+        [224, 162, 141, 255],
+        [215, 111, 89, 255],
+        [192, 62, 56, 255],
+        [127, 3, 3, 255],
+      ];
+      const DISCRETE_COLORMAP = CLEAR_SKY_COLORS.map((color, index) => [
+        [index * 10, index === 9 ? 101 : (index + 1) * 10],
+        color,
+      ]);
 
       debugLog(`Environment: ${isLocal ? "LOCAL" : "PRODUCTION"}`, "info");
       debugLog(`API Base URL: ${API_BASE_URL}`, "info");
@@ -114,10 +130,16 @@
           container.appendChild(title);
 
           const gradient = L.DomUtil.create("div", "colorbar-gradient");
+          CLEAR_SKY_COLORS.forEach(([red, green, blue]) => {
+            const step = L.DomUtil.create("div", "colorbar-step", gradient);
+            step.style.backgroundColor = `rgb(${red}, ${green}, ${blue})`;
+          });
           container.appendChild(gradient);
 
           const labels = L.DomUtil.create("div", "colorbar-labels");
-          ["0", "50", "100"].forEach(function (val) {
+          Array.from({ length: 11 }, (_, index) => index * 10).forEach(function (
+            val,
+          ) {
             const span = document.createElement("span");
             span.textContent = val;
             labels.appendChild(span);
@@ -207,7 +229,9 @@
       const buildTileUrl = (mosaicUrl) =>
         `${API_BASE_URL}/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png` +
         `?url=${encodeURIComponent(mosaicUrl)}` +
-        "&rescale=0,100&colormap_name=coolwarm&clamp=true" +
+        "&rescale=0,100" +
+        `&colormap=${encodeURIComponent(JSON.stringify(DISCRETE_COLORMAP))}` +
+        "&clamp=true" +
         `&api_key=${API_KEY}`;
 
       // Track tile loading
