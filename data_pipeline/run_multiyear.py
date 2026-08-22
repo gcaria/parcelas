@@ -46,8 +46,14 @@ def compute_clear_sky_counts(da_sat: xr.DataArray) -> xr.DataArray:
     return counts.rio.write_crs(da_sat.rio.crs)
 
 
-def store_count_raster(counts: xr.DataArray, output: Path, buffer: int) -> None:
-    """Clip and store one year's counts as a lightweight tiled scratch raster."""
+def accumulate_counts(
+    counts: xr.DataArray,
+    accumulator: Path,
+    buffer: int,
+    *,
+    reset: bool = False,
+) -> None:
+    """Add one year's counts to a windowed two-band on-disk accumulator."""
     raster_crs = counts.rio.crs
     if raster_crs is None:
         raise ValueError("Clear-sky count data has no spatial CRS")
@@ -58,13 +64,97 @@ def store_count_raster(counts: xr.DataArray, output: Path, buffer: int) -> None:
     )
     clip_geometry = _make_clip_geometry(aoi, raster_crs, buffer)
     clipped = counts.rio.clip([clip_geometry], raster_crs, drop=True)
-    clipped.rio.to_raster(
-        output,
-        driver="GTiff",
-        dtype="uint16",
-        tiled=True,
-        BIGTIFF="IF_SAFER",
-    )
+    accumulator.parent.mkdir(parents=True, exist_ok=True)
+
+    create = reset or not accumulator.exists()
+    if create:
+        profile = {
+            "driver": "GTiff",
+            "width": clipped.rio.width,
+            "height": clipped.rio.height,
+            "count": 2,
+            "dtype": "uint32",
+            "crs": raster_crs,
+            "transform": clipped.rio.transform(),
+            "nodata": 0,
+            "tiled": True,
+            "blockxsize": 1024,
+            "blockysize": 1024,
+            "BIGTIFF": "IF_SAFER",
+        }
+        with rasterio.open(accumulator, "w", **profile):
+            pass
+
+    with rasterio.open(accumulator, "r+") as destination:
+        actual = (
+            destination.crs,
+            destination.transform,
+            destination.width,
+            destination.height,
+        )
+        expected = (
+            raster_crs,
+            clipped.rio.transform(),
+            clipped.rio.width,
+            clipped.rio.height,
+        )
+        if destination.count != 2 or actual != expected:
+            raise ValueError("Yearly counts do not align with the accumulator")
+
+        for _, window in destination.block_windows(1):
+            y_slice = slice(int(window.row_off), int(window.row_off + window.height))
+            x_slice = slice(int(window.col_off), int(window.col_off + window.width))
+            yearly = (
+                clipped.isel(y=y_slice, x=x_slice)
+                .compute()
+                .values.astype("uint32", copy=False)
+            )
+            if not create:
+                yearly = yearly + destination.read(window=window, out_dtype="uint32")
+            destination.write(yearly, window=window)
+
+
+def finalize_count_accumulator(accumulator: Path, output: Path) -> None:
+    """Convert a two-band count accumulator to a clear-sky percentage COG."""
+    with rasterio.open(accumulator) as source:
+        if source.count != 2:
+            raise ValueError("Count accumulator must contain exactly two bands")
+
+        profile = source.profile.copy()
+        profile.update(
+            driver="GTiff", count=1, dtype="uint8", nodata=0, compress="DEFLATE"
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            suffix=".tif", prefix="clear-sky-finalize-", dir=output.parent, delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+
+        try:
+            with rasterio.open(temporary_path, "w", **profile) as destination:
+                for _, window in source.block_windows(1):
+                    clear_count = source.read(1, window=window, out_dtype="uint32")
+                    valid_count = source.read(2, window=window, out_dtype="uint32")
+                    percentage = np.zeros_like(clear_count, dtype="uint8")
+                    np.divide(
+                        clear_count * 100,
+                        valid_count,
+                        out=percentage,
+                        where=valid_count > 0,
+                        casting="unsafe",
+                    )
+                    destination.write(percentage, 1, window=window)
+
+            copy_raster(
+                temporary_path,
+                output,
+                driver="COG",
+                compress="DEFLATE",
+                nodata=0,
+                NUM_THREADS="ALL_CPUS",
+            )
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
 
 def merge_count_cogs(inputs: Sequence[Path], output: Path) -> None:
@@ -183,7 +273,7 @@ def run_sequential_multiyear(
     chunks = chunks or {"x": 1024, "y": 1024}
     aoi = _load_aoi("sentinel2", None, None, tile_id, None)
     work_dir.mkdir(parents=True, exist_ok=True)
-    count_paths: list[Path] = []
+    accumulator = work_dir / f"sentinel2_{tile_id.lstrip('T')}_counts.tif"
 
     for year in range(start_year, end_year + 1):
         logging.info("Processing Sentinel-2 tile %s for %s", tile_id, year)
@@ -199,13 +289,16 @@ def run_sequential_multiyear(
         )
         data.attrs["clear_sky_flags"] = SENSOR_CONFIGS["sentinel2"]["clear_sky_flags"]
         counts = compute_clear_sky_counts(data)
-        count_path = work_dir / f"sentinel2_{tile_id.lstrip('T')}_{year}_counts.tif"
-        store_count_raster(counts, count_path, buffer)
-        count_paths.append(count_path)
+        accumulate_counts(
+            counts,
+            accumulator,
+            buffer,
+            reset=year == start_year,
+        )
         del counts, data
         gc.collect()
 
-    merge_count_cogs(count_paths, output)
+    finalize_count_accumulator(accumulator, output)
     if mask_water:
         apply_surface_water_mask(output, aoi, chunks)
     return output
