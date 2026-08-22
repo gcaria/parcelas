@@ -66,13 +66,22 @@ async def api_key_middleware(request: Request, call_next):
 rate_limit_storage: dict = defaultdict(list)
 
 
+def _client_ip(request: Request) -> str:
+    """Return the original client IP when running behind a trusted proxy."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", maxsplit=1)[0].strip()
+
+    return request.client.host if request.client else "unknown"
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Apply rate limiting based on client IP, except for public paths."""
     if request.url.path in PUBLIC_PATHS:
         return await call_next(request)
 
-    client_ip = request.client.host
+    client_ip = _client_ip(request)
     now = time.time()
 
     # Clean old requests

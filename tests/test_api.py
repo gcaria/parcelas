@@ -110,3 +110,29 @@ def test_rate_limit():
         "/mosaicjson/validate?gcs_path=gs://anything", headers={"X-API-Key": "test-key"}
     )
     assert response.status_code == 429
+    assert response.json() == {"detail": "Rate limit exceeded"}
+
+
+def test_rate_limit_isolated_by_forwarded_client_ip():
+    """Do not share a rate-limit bucket across clients behind Cloud Run."""
+    first_client = {"X-API-Key": "test-key", "X-Forwarded-For": "203.0.113.10"}
+    second_client = {"X-API-Key": "test-key", "X-Forwarded-For": "203.0.113.11"}
+
+    for _ in range(100):
+        response = client.get(
+            "/mosaicjson/validate?gcs_path=gs://anything", headers=first_client
+        )
+        assert response.status_code != 429
+
+    assert (
+        client.get(
+            "/mosaicjson/validate?gcs_path=gs://anything", headers=first_client
+        ).status_code
+        == 429
+    )
+    assert (
+        client.get(
+            "/mosaicjson/validate?gcs_path=gs://anything", headers=second_client
+        ).status_code
+        != 429
+    )
