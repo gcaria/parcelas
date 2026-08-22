@@ -123,6 +123,26 @@ def test_compute_clear_sky_percentage_preserves_raster_crs(sample_qa_dataarray):
     assert result.rio.crs.to_epsg() == 32719
 
 
+def test_compute_clear_sky_percentage_excludes_invalid_sentinel_observations():
+    """Exclude Sentinel nodata and masked values from each pixel's denominator."""
+    scl = xr.DataArray(
+        np.array(
+            [
+                [[4, 5, 0]],
+                [[9, np.nan, np.nan]],
+                [[0, 0, 0]],
+            ]
+        ),
+        dims=("time", "y", "x"),
+        attrs={"clear_sky_flags": [4, 5, 6, 11], "nodata": 0},
+    )
+
+    result = compute_clear_sky_percentage(scl)
+
+    np.testing.assert_allclose(result.values[0, :2], [0.5, 1.0])
+    assert np.isnan(result.values[0, 2])
+
+
 def test_compute_clear_sky_percentage_empty():
     """Test with empty data."""
     da_empty = xr.DataArray(
@@ -222,6 +242,7 @@ def test_get_satellite_data_sentinel2(
     assert isinstance(result, xr.DataArray)
     assert result.attrs["sensor"] == "sentinel2"
     assert result.attrs["clear_sky_flags"] == [4, 5, 6, 11]
+    assert result.attrs["nodata"] == 0
     assert result.rio.crs.to_epsg() == 32719
     assert "aoi_wkt" in result.attrs
     assert "aoi_crs" in result.attrs

@@ -155,6 +155,7 @@ def get_satellite_data(
 
     da_sat.attrs["sensor"] = sensor
     da_sat.attrs["clear_sky_flags"] = config["clear_sky_flags"]
+    da_sat.attrs["nodata"] = config["nodata"]
     da_sat.attrs["aoi_wkt"] = shp.union_all().wkt
     da_sat.attrs["aoi_crs"] = str(shp.crs)
 
@@ -288,9 +289,16 @@ def compute_clear_sky_percentage(
     if clear_sky_qa_flags is None:
         clear_sky_qa_flags = da_ls.attrs.get("clear_sky_flags", CLEAR_SKY_QA_FLAGS)
     raster_crs = da_ls.rio.crs
-    clear_sky = da_ls.isin(clear_sky_qa_flags)
-    _sum = clear_sky.astype(int).sum(dim="time")
-    result = _sum / len(da_ls.time)
+    valid_observation = da_ls.notnull()
+    nodata = da_ls.attrs.get("nodata")
+    if nodata is not None:
+        valid_observation = valid_observation & (da_ls != nodata)
+
+    clear_sky = da_ls.isin(clear_sky_qa_flags) & valid_observation
+    clear_count = clear_sky.astype(int).sum(dim="time")
+    valid_count = valid_observation.astype(int).sum(dim="time")
+    result = (clear_count / valid_count).where(valid_count > 0)
+    result.attrs.update(da_ls.attrs)
 
     if raster_crs is not None:
         result = result.rio.write_crs(raster_crs)
