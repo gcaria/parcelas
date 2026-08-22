@@ -266,12 +266,40 @@
         attachMosaicLayerEvents(mosaicLayer);
       };
 
+      const zoomToMosaic = async (mosaicUrl) => {
+        const infoUrl =
+          `${API_BASE_URL}/mosaicjson/info` +
+          `?url=${encodeURIComponent(mosaicUrl)}` +
+          `&api_key=${API_KEY}`;
+
+        try {
+          const response = await fetch(infoUrl);
+          if (!response.ok) {
+            throw new Error(`Mosaic info request failed: ${response.status}`);
+          }
+
+          const info = await response.json();
+          const [west, south, east, north] = info.bounds;
+          const bounds = L.latLngBounds([south, west], [north, east]);
+          map.fitBounds(bounds, { padding: [20, 20] });
+          if (info.mosaic_minzoom && map.getZoom() < info.mosaic_minzoom) {
+            map.setZoom(info.mosaic_minzoom);
+          }
+          debugLog(`Zoomed to preview bounds: ${info.bounds}`, "success");
+        } catch (error) {
+          debugLog(`Unable to zoom to preview: ${error.message}`, "error");
+        }
+      };
+
       debugLog("Adding colorbar control...", "info");
       new ColorBar().addTo(map);
 
       debugLog("Adding sensor selector...", "info");
       new SensorSelector().addTo(map);
       setSensor(DEFAULT_SELECTED_SENSOR);
+      if (previewMosaicUrl) {
+        zoomToMosaic(previewMosaicUrl);
+      }
 
       debugLog("Adding github link...", "info");
       new GitHubLink().addTo(map);
