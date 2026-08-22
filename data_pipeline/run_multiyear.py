@@ -150,7 +150,6 @@ def finalize_count_accumulator(accumulator: Path, output: Path) -> None:
                 output,
                 driver="COG",
                 compress="DEFLATE",
-                nodata=0,
                 NUM_THREADS="ALL_CPUS",
             )
         finally:
@@ -212,7 +211,6 @@ def merge_count_cogs(inputs: Sequence[Path], output: Path) -> None:
                 output,
                 driver="COG",
                 compress="DEFLATE",
-                nodata=0,
                 NUM_THREADS="ALL_CPUS",
             )
         finally:

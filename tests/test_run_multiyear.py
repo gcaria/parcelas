@@ -79,7 +79,7 @@ def _count_data(clear: np.ndarray, valid: np.ndarray) -> xr.DataArray:
         dims=("band", "y", "x"),
         coords={"band": [1, 2], "y": [30, 10], "x": [10, 30]},
         attrs={
-            "aoi_wkt": "POLYGON ((0 0, 40 0, 40 40, 0 40, 0 0))",
+            "aoi_wkt": "POLYGON ((-100 -100, 100 -100, 100 100, -100 100, -100 -100))",
             "aoi_crs": "EPSG:32719",
         },
     ).rio.write_crs("EPSG:32719")
