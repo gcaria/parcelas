@@ -402,6 +402,75 @@ def test_run_clear_sky_pipeline(
     )
 
 
+@patch("data_pipeline.clear_sky.pystac_client.Client")
+@patch("data_pipeline.clear_sky.odc.stac.stac_load")
+@patch("data_pipeline.clear_sky.get_mgrs_tile")
+def test_run_clear_sky_pipeline_processes_sentinel2_to_cog(
+    mock_get_mgrs_tile, mock_stac_load, mock_client, tmp_path
+):
+    """Process retrieved Sentinel-2 SCL data through to the final COG."""
+    aoi = gpd.GeoDataFrame(
+        geometry=[box(300000, 6200000, 300020, 6200020)], crs="EPSG:32719"
+    )
+    mock_get_mgrs_tile.return_value = aoi
+
+    search = Mock()
+    search.item_collection.return_value = ["sentinel-item-1", "sentinel-item-2"]
+    catalog = Mock()
+    catalog.search.return_value = search
+    mock_client.open.return_value = catalog
+
+    scl = xr.DataArray(
+        np.array(
+            [
+                [[4, 3], [6, 8]],
+                [[5, 4], [9, 11]],
+            ]
+        ),
+        dims=("time", "y", "x"),
+        coords={
+            "time": ["2020-01-01", "2020-02-01"],
+            "y": [6200015, 6200005],
+            "x": [300005, 300015],
+        },
+    ).rio.write_crs(aoi.crs)
+    mock_stac_load.return_value = {"SCL": scl}
+
+    output_template = str(tmp_path / "{tile_key}.tif")
+    result = run_clear_sky_pipeline(
+        tile_id="T19HCD",
+        sensor="sentinel2",
+        mask_water=False,
+        output_template=output_template,
+        buffer=0,
+    )
+
+    assert result == str(tmp_path / "sentinel2_19HCD.tif")
+    assert (tmp_path / "sentinel2_19HCD.tif").is_file()
+    output = xr.open_dataarray(result, engine="rasterio")
+    try:
+        np.testing.assert_array_equal(
+            output.squeeze().values,
+            np.array([[100, 50], [50, 50]], dtype=np.uint8),
+        )
+        assert output.rio.nodata == 0
+    finally:
+        output.close()
+    catalog.search.assert_called_once_with(
+        collections=["sentinel-2-l2a"],
+        intersects=aoi.union_all(),
+        datetime="2020-01-01/2020-12-31",
+        query={"s2:mgrs_tile": {"eq": "19HCD"}},
+    )
+    mock_stac_load.assert_called_once_with(
+        ["sentinel-item-1", "sentinel-item-2"],
+        bands=["SCL"],
+        intersects=aoi.union_all(),
+        chunks={"x": 512, "y": 512},
+        nodata=0,
+    )
+
+
 def test_load_aoi_uses_geojson_when_provided(sample_geometry):
     """Explicit aoi_geojson takes priority over tile footprint."""
     with patch(
