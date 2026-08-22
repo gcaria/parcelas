@@ -284,10 +284,15 @@ def compute_clear_sky_percentage(
 
     if clear_sky_qa_flags is None:
         clear_sky_qa_flags = da_ls.attrs.get("clear_sky_flags", CLEAR_SKY_QA_FLAGS)
+    raster_crs = da_ls.rio.crs
     clear_sky = da_ls.isin(clear_sky_qa_flags)
     _sum = clear_sky.astype(int).sum(dim="time")
+    result = _sum / len(da_ls.time)
 
-    return _sum / len(da_ls.time)
+    if raster_crs is not None:
+        result = result.rio.write_crs(raster_crs)
+
+    return result
 
 
 def store_clear_sky_percentage(

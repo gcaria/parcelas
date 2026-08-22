@@ -114,6 +114,15 @@ def test_compute_clear_sky_percentage_uses_dataarray_flags(sample_qa_dataarray):
     np.testing.assert_allclose(result.values, expected)
 
 
+def test_compute_clear_sky_percentage_preserves_raster_crs(sample_qa_dataarray):
+    """Preserve CRS metadata needed to clip and write the final raster."""
+    sample_qa_dataarray = sample_qa_dataarray.rio.write_crs("EPSG:32719")
+
+    result = compute_clear_sky_percentage(sample_qa_dataarray)
+
+    assert result.rio.crs.to_epsg() == 32719
+
+
 def test_compute_clear_sky_percentage_empty():
     """Test with empty data."""
     da_empty = xr.DataArray(
