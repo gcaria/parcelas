@@ -333,14 +333,18 @@ def store_clear_sky_percentage(
         row=row,
         tile_id=tile_id,
     )
+    raster_crs = da_csp.rio.crs
+    if raster_crs is None:
+        raise ValueError("Clear sky percentage data has no spatial CRS")
+
     aoi_geom = shapely.from_wkt(da_csp.attrs["aoi_wkt"])
     clip_shp = geopandas.GeoDataFrame(geometry=[aoi_geom], crs=da_csp.attrs["aoi_crs"])
     da_csp = (da_csp.where(da_csp > 0) * 100).fillna(0)
-    da_csp = da_csp.astype("uint8").rio.write_nodata(0)
+    da_csp = da_csp.astype("uint8").rio.write_crs(raster_crs).rio.write_nodata(0)
 
-    poly = _make_clip_geometry(clip_shp, da_csp.rio.crs, buffer)
+    poly = _make_clip_geometry(clip_shp, raster_crs, buffer)
 
-    da_csp = da_csp.rio.clip([poly], da_csp.rio.crs, drop=True)
+    da_csp = da_csp.rio.clip([poly], raster_crs, drop=True)
 
     fname = output_template.format(
         tile_key=tile_key,

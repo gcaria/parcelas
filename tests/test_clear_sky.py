@@ -472,6 +472,7 @@ def test_run_clear_sky_pipeline_processes_sentinel2_to_cog(
             np.array([[100, 50], [50, 50]], dtype=np.uint8),
         )
         assert output.rio.nodata == 0
+        assert output.rio.crs.to_epsg() == 32719
     finally:
         output.close()
     catalog.search.assert_called_once_with(
