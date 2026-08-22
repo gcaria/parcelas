@@ -183,7 +183,10 @@ def test_get_satellite_data_landsat(mock_stac_load, mock_client, sample_geometry
 
 @patch("data_pipeline.clear_sky.pystac_client.Client")
 @patch("data_pipeline.clear_sky.odc.stac.stac_load")
-def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geometry):
+@patch("data_pipeline.clear_sky.get_jrc_surface_water")
+def test_get_satellite_data_sentinel2(
+    mock_get_jrc_surface_water, mock_stac_load, mock_client, sample_geometry
+):
     """Test fetching Sentinel-2 data through the generalized function."""
     mock_catalog = Mock()
     mock_client.open.return_value = mock_catalog
@@ -202,13 +205,18 @@ def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geomet
     assert mock_da.odc.crs is not None
     assert mock_da.rio.crs is None
     mock_stac_load.return_value = {"SCL": mock_da}
+    surface_water = xr.DataArray(
+        np.zeros((10, 10)),
+        dims=("y", "x"),
+        coords={"y": range(10), "x": range(10)},
+    ).rio.write_crs("EPSG:32719")
+    mock_get_jrc_surface_water.return_value = {"occurrence": surface_water}
 
     result = get_satellite_data(
         shp=sample_geometry,
         tile_id="T19HCD",
         sensor="sentinel2",
         time_range="2020-01-01/2020-12-31",
-        mask_water=False,
     )
 
     assert isinstance(result, xr.DataArray)
@@ -217,6 +225,9 @@ def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geomet
     assert result.rio.crs.to_epsg() == 32719
     assert "aoi_wkt" in result.attrs
     assert "aoi_crs" in result.attrs
+    mock_get_jrc_surface_water.assert_called_once_with(
+        sample_geometry, chunks={"x": 512, "y": 512}
+    )
     mock_catalog.search.assert_called_once_with(
         collections=["sentinel-2-l2a"],
         intersects=sample_geometry.union_all(),
@@ -375,6 +386,8 @@ def test_run_clear_sky_pipeline(
     """Test the unified clear sky pipeline."""
     mock_da_sat = Mock()
     mock_da_csp = Mock()
+    mock_da_sat.rio.crs = "EPSG:32719"
+    mock_da_csp.rio.write_crs.return_value = mock_da_csp
     mock_load_aoi.return_value = sample_geometry
     mock_get_satellite_data.return_value = mock_da_sat
     mock_compute_clear_sky_percentage.return_value = mock_da_csp
@@ -409,6 +422,7 @@ def test_run_clear_sky_pipeline(
         mask_water=True,
     )
     mock_compute_clear_sky_percentage.assert_called_once_with(mock_da_sat)
+    mock_da_csp.rio.write_crs.assert_called_once_with("EPSG:32719")
     mock_store_clear_sky_percentage.assert_called_once_with(
         da_csp=mock_da_csp,
         path=None,

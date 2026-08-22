@@ -139,16 +139,19 @@ def get_satellite_data(
         nodata=config["nodata"],
     )[data_band]
 
-    if da_sat.rio.crs is None:
-        odc_crs = da_sat.odc.crs
-        if odc_crs is None:
-            raise ValueError("Satellite data has no spatial CRS")
-        da_sat = da_sat.rio.write_crs(str(odc_crs))
+    raster_crs = da_sat.rio.crs
+    if raster_crs is None:
+        raster_crs = da_sat.odc.crs
+    if raster_crs is None:
+        raise ValueError("Satellite data has no spatial CRS")
+    da_sat = da_sat.rio.write_crs(str(raster_crs))
 
     if mask_water:
         da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
         da_sw = da_sw.rio.reproject_match(da_sat).squeeze()
         da_sat = da_sat.where(da_sw < 90)
+
+    da_sat = da_sat.rio.write_crs(str(raster_crs))
 
     da_sat.attrs["sensor"] = sensor
     da_sat.attrs["clear_sky_flags"] = config["clear_sky_flags"]
@@ -441,7 +444,11 @@ def run_clear_sky_pipeline(
         chunks=chunks,
         mask_water=mask_water,
     )
+    raster_crs = da_sat.rio.crs
+    if raster_crs is None:
+        raise ValueError("Satellite data has no spatial CRS")
     da_csp = compute_clear_sky_percentage(da_sat)
+    da_csp = da_csp.rio.write_crs(raster_crs)
     return store_clear_sky_percentage(
         da_csp=da_csp,
         path=path,
