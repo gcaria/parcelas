@@ -1,0 +1,112 @@
+name: Run multi-year Sentinel pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      tile_id:
+        description: Sentinel-2 MGRS tile ID
+        required: true
+        default: T19HCD
+        type: string
+      start_year:
+        description: First complete calendar year
+        required: true
+        default: "2020"
+        type: string
+      end_year:
+        description: Last complete calendar year
+        required: true
+        default: "2024"
+        type: string
+      mask_water:
+        description: Mask persistent surface water
+        required: true
+        default: true
+        type: boolean
+      buffer:
+        description: Inward clipping buffer in metres
+        required: true
+        default: "-500"
+        type: string
+      preview_gcs_prefix:
+        description: Separate GCS prefix for comparisons
+        required: true
+        default: gs://parcelas-wrs2/comparisons/sentinel2-multiyear
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-multiyear:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev libspatialindex-dev --no-install-recommends
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Process years sequentially and merge counts
+        run: |
+          mkdir -p output annual-counts
+          args=(
+            --tile-id "${{ inputs.tile_id }}"
+            --start-year "${{ inputs.start_year }}"
+            --end-year "${{ inputs.end_year }}"
+            --output "output/sentinel2_${{ inputs.tile_id }}_${{ inputs.start_year }}_${{ inputs.end_year }}_uint8.tif"
+            --work-dir annual-counts
+            --buffer "${{ inputs.buffer }}"
+          )
+          if [[ "${{ inputs.mask_water }}" != "true" ]]; then
+            args+=(--no-mask-water)
+          fi
+          python -m data_pipeline.run_multiyear "${args[@]}"
+
+      - name: Upload final COG
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel2-${{ inputs.tile_id }}-${{ inputs.start_year }}-${{ inputs.end_year }}
+          path: output/*.tif
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Install preview dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Publish isolated comparison preview
+        env:
+          PREFIX: ${{ inputs.preview_gcs_prefix }}
+        run: |
+          cog_path=(output/*.tif)
+          preview_prefix="${PREFIX%/}/run-${GITHUB_RUN_ID}"
+          cog_url="$preview_prefix/$(basename "${cog_path[0]}")"
+          mosaic_url="$preview_prefix/mosaic.json.gz"
+          gcloud storage cp "${cog_path[0]}" "$cog_url"
+          python -m data_pipeline.create_preview_mosaic --cog-url "$cog_url" --output "$mosaic_url"
+          preview_link="https://gcaria.github.io/parcelas/?sensor=sentinel2&mosaic=${mosaic_url}"
+          {
+            echo "## Multi-year Sentinel comparison"
+            echo
+            echo "[Open the result in the Parcelas frontend]($preview_link)"
+            echo
+            echo "Mosaic: \`$mosaic_url\`"
+          } >> "$GITHUB_STEP_SUMMARY"
