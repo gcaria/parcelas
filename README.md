@@ -126,6 +126,12 @@ the repository's Actions tab, select the workflow, choose **Run workflow**, and
 provide either a Sentinel-2 tile ID or a Landsat path and row. The generated COG
 is available from the completed run as an artifact for 14 days.
 
+To create a clickable map preview, add a `GCP_SERVICE_ACCOUNT_KEY` repository
+secret containing credentials that can write to the preview bucket, then enable
+`publish_preview` when starting the workflow. The completed run summary links to
+the frontend with its temporary one-tile mosaic selected. Configure a lifecycle
+rule on the bucket's `previews/` prefix to remove old preview files.
+
 ### Generating a Mosaic
 
 Once COGs are on GCS, generate a mosaic JSON via the API:

@@ -52,10 +52,19 @@
       };
       const MOSAIC_URLS =
         typeof SENSOR_MOSAIC_URLS !== "undefined"
-          ? SENSOR_MOSAIC_URLS
+          ? { ...SENSOR_MOSAIC_URLS }
           : DEFAULT_MOSAIC_URLS;
-      const DEFAULT_SELECTED_SENSOR =
+      const queryParams = new URLSearchParams(window.location.search);
+      const requestedSensor = queryParams.get("sensor");
+      const previewMosaicUrl = queryParams.get("mosaic");
+      const configuredDefaultSensor =
         typeof DEFAULT_SENSOR !== "undefined" ? DEFAULT_SENSOR : "landsat";
+      const DEFAULT_SELECTED_SENSOR = Object.hasOwn(MOSAIC_URLS, requestedSensor)
+        ? requestedSensor
+        : configuredDefaultSensor;
+      if (previewMosaicUrl) {
+        MOSAIC_URLS[DEFAULT_SELECTED_SENSOR] = previewMosaicUrl;
+      }
       const SENSOR_LABELS = {
         landsat: "Landsat",
         sentinel2: "Sentinel-2",

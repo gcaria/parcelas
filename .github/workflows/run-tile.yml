@@ -37,6 +37,16 @@ on:
         required: true
         default: "-500"
         type: string
+      publish_preview:
+        description: Publish a temporary GCS preview and frontend link
+        required: true
+        default: false
+        type: boolean
+      preview_gcs_prefix:
+        description: GCS folder for temporary previews
+        required: true
+        default: gs://parcelas-wrs2/previews
+        type: string
 
 permissions:
   contents: read
@@ -53,6 +63,8 @@ jobs:
       TIME_RANGE: ${{ inputs.time_range }}
       MASK_WATER: ${{ inputs.mask_water }}
       BUFFER: ${{ inputs.buffer }}
+      PUBLISH_PREVIEW: ${{ inputs.publish_preview }}
+      PREVIEW_GCS_PREFIX: ${{ inputs.preview_gcs_prefix }}
 
     steps:
       - uses: actions/checkout@v5
@@ -116,3 +128,47 @@ jobs:
           path: output/*.tif
           if-no-files-found: error
           retention-days: 14
+
+      - name: Authenticate to Google Cloud
+        if: inputs.publish_preview
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Google Cloud CLI
+        if: inputs.publish_preview
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Install preview dependencies
+        if: inputs.publish_preview
+        run: pip install -r api/requirements.txt
+
+      - name: Publish preview
+        if: inputs.publish_preview
+        env:
+          FRONTEND_URL: https://gcaria.github.io/parcelas/
+        run: |
+          cog_paths=(output/*.tif)
+          if [[ ${#cog_paths[@]} -ne 1 ]]; then
+            echo "Expected exactly one generated COG" >&2
+            exit 1
+          fi
+
+          cog_name=$(basename "${cog_paths[0]}")
+          preview_prefix="${PREVIEW_GCS_PREFIX%/}/run-${GITHUB_RUN_ID}"
+          cog_url="$preview_prefix/$cog_name"
+          mosaic_url="$preview_prefix/mosaic.json.gz"
+
+          gcloud storage cp "${cog_paths[0]}" "$cog_url"
+          python -m data_pipeline.create_preview_mosaic \
+            --cog-url "$cog_url" \
+            --output "$mosaic_url"
+
+          preview_link="${FRONTEND_URL}?sensor=${SENSOR}&mosaic=${mosaic_url}"
+          {
+            echo "## Tile preview"
+            echo
+            echo "[Open this result in the Parcelas frontend]($preview_link)"
+            echo
+            echo "Mosaic: \`$mosaic_url\`"
+          } >> "$GITHUB_STEP_SUMMARY"
