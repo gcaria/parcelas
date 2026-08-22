@@ -123,6 +123,7 @@ def merge_count_cogs(inputs: Sequence[Path], output: Path) -> None:
                 driver="COG",
                 compress="DEFLATE",
                 nodata=0,
+                NUM_THREADS="ALL_CPUS",
             )
         finally:
             temporary_path.unlink(missing_ok=True)
@@ -158,6 +159,7 @@ def apply_surface_water_mask(
                 dtype="uint8",
                 nodata=0,
                 compress="DEFLATE",
+                NUM_THREADS="ALL_CPUS",
             )
             temporary_path.replace(output)
         finally:
