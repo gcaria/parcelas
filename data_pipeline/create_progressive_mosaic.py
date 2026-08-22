@@ -46,8 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Discover completed COGs and write their compressed MosaicJSON."""
     args = build_parser().parse_args(argv)
-    filesystem, _, paths = fsspec.get_fs_token_paths(args.input_pattern)
-    cog_urls = select_latest_cogs(filesystem.glob(paths[0]))
+    filesystem, glob_path = fsspec.core.url_to_fs(args.input_pattern)
+    cog_urls = select_latest_cogs(filesystem.glob(glob_path))
     if not cog_urls:
         raise RuntimeError(f"No Sentinel-2 preview COGs match {args.input_pattern}")
 
