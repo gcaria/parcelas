@@ -216,18 +216,41 @@
 
       // Basemap
       debugLog("Adding basemap layer...", "info");
-      const basemap = L.tileLayer(
+      const streetBasemap = L.tileLayer(
         "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
         {
-          attribution: "© OpenStreetMap",
+          attribution: "© OpenStreetMap contributors",
         },
       ).addTo(map);
 
-      basemap.on("load", () =>
-        debugLog("Basemap loaded successfully", "success"),
+      const satelliteBasemap = L.tileLayer(
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution:
+            "Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+          maxZoom: 19,
+        },
       );
-      basemap.on("tileerror", (e) =>
-        debugLog(`Basemap tile error: ${e.tile.src}`, "error"),
+
+      L.control
+        .layers(
+          {
+            Streets: streetBasemap,
+            Satellite: satelliteBasemap,
+          },
+          null,
+          { position: "topright", collapsed: false },
+        )
+        .addTo(map);
+
+      [streetBasemap, satelliteBasemap].forEach((layer) => {
+        layer.on("load", () =>
+          debugLog("Basemap loaded successfully", "success"),
+        );
+        layer.on("tileerror", (e) =>
+          debugLog(`Basemap tile error: ${e.tile.src}`, "error"),
+        );
+      });
       );
 
       const buildTileUrl = (mosaicUrl) =>
