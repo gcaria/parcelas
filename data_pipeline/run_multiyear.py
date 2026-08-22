@@ -20,6 +20,7 @@ from data_pipeline.clear_sky import (
     SENSOR_CONFIGS,
     _load_aoi,
     _make_clip_geometry,
+    get_jrc_surface_water,
     get_satellite_data,
 )
 
@@ -124,6 +125,39 @@ def merge_count_cogs(inputs: Sequence[Path], output: Path) -> None:
             source.close()
 
 
+def apply_surface_water_mask(
+    output: Path,
+    aoi: geopandas.GeoDataFrame,
+    chunks: dict[str, int],
+) -> None:
+    """Apply the time-invariant JRC surface-water mask to a merged result once."""
+    with xr.open_dataarray(output, engine="rasterio", chunks=chunks) as result:
+        water = get_jrc_surface_water(aoi, chunks=chunks)["occurrence"]
+        water = water.rio.reproject_match(result).squeeze(drop=True)
+        masked = result.where(water < 90, 0).astype("uint8")
+        masked = masked.rio.write_crs(result.rio.crs).rio.write_nodata(0)
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".tif",
+            prefix="clear-sky-water-mask-",
+            dir=output.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+
+        try:
+            masked.rio.to_raster(
+                temporary_path,
+                driver="COG",
+                dtype="uint8",
+                nodata=0,
+                compress="DEFLATE",
+            )
+            temporary_path.replace(output)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+
 def run_sequential_multiyear(
     tile_id: str,
     start_year: int,
@@ -151,7 +185,9 @@ def run_sequential_multiyear(
             sensor="sentinel2",
             time_range=f"{year}-01-01/{year}-12-31",
             chunks=chunks,
-            mask_water=mask_water,
+            # JRC is static, so applying it once after the yearly merge avoids
+            # downloading and reprojecting the same mask for every year.
+            mask_water=False,
         )
         data.attrs["clear_sky_flags"] = SENSOR_CONFIGS["sentinel2"]["clear_sky_flags"]
         counts = compute_clear_sky_counts(data)
@@ -162,6 +198,8 @@ def run_sequential_multiyear(
         gc.collect()
 
     merge_count_cogs(count_paths, output)
+    if mask_water:
+        apply_surface_water_mask(output, aoi, chunks)
     return output
 
 

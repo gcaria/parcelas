@@ -1,6 +1,7 @@
 """Tests for sequential multi-year clear-sky processing."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import rasterio
@@ -8,7 +9,11 @@ import rioxarray  # noqa: F401
 import xarray as xr
 from rasterio.transform import from_origin
 
-from data_pipeline.run_multiyear import compute_clear_sky_counts, merge_count_cogs
+from data_pipeline.run_multiyear import (
+    compute_clear_sky_counts,
+    merge_count_cogs,
+    run_sequential_multiyear,
+)
 
 
 def test_compute_clear_sky_counts_preserves_denominator():
@@ -64,3 +69,41 @@ def test_merge_count_cogs_weights_years_by_valid_observations(tmp_path):
         assert result.driver == "GTiff"
         assert result.profile["dtype"] == "uint8"
         assert result.nodata == 0
+
+
+def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
+    annual_data = xr.DataArray(
+        np.array([[[4]]], dtype="uint8"),
+        dims=("time", "y", "x"),
+        coords={"time": [0], "y": [0], "x": [0]},
+        attrs={
+            "clear_sky_flags": [4, 5],
+            "nodata": 0,
+            "aoi_wkt": "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))",
+            "aoi_crs": "EPSG:4326",
+        },
+    ).rio.write_crs("EPSG:32719")
+
+    with (
+        patch("data_pipeline.run_multiyear._load_aoi") as load_aoi,
+        patch(
+            "data_pipeline.run_multiyear.get_satellite_data",
+            return_value=annual_data,
+        ) as get_data,
+        patch("data_pipeline.run_multiyear.store_count_cog"),
+        patch("data_pipeline.run_multiyear.merge_count_cogs"),
+        patch("data_pipeline.run_multiyear.apply_surface_water_mask") as apply_mask,
+    ):
+        run_sequential_multiyear(
+            tile_id="T19HCD",
+            start_year=2020,
+            end_year=2024,
+            output=tmp_path / "result.tif",
+            work_dir=tmp_path / "counts",
+        )
+
+    assert get_data.call_count == 5
+    assert all(call.kwargs["mask_water"] is False for call in get_data.call_args_list)
+    apply_mask.assert_called_once_with(
+        tmp_path / "result.tif", load_aoi.return_value, {"x": 512, "y": 512}
+    )
