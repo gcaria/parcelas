@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import logging
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
+import gcsfs
 import geopandas
 import numpy as np
 import rasterio
 import shapely
 import xarray as xr
+from planetary_computer.sas import TOKEN_CACHE
 from rasterio.shutil import copy as copy_raster
 
 from data_pipeline.clear_sky import (
@@ -254,6 +257,91 @@ def apply_surface_water_mask(
             temporary_path.unlink(missing_ok=True)
 
 
+def refresh_planetary_computer_tokens() -> None:
+    """Force subsequent STAC assets to receive a fresh SAS token."""
+    TOKEN_CACHE.clear()
+
+
+def restore_checkpoint(
+    accumulator: Path,
+    checkpoint_prefix: str,
+    *,
+    tile_id: str,
+    start_year: int,
+    end_year: int,
+    buffer: int,
+) -> int | None:
+    """Restore a compatible accumulator and return its last completed year."""
+    filesystem = gcsfs.GCSFileSystem()
+    manifest_url = f"{checkpoint_prefix}.json"
+    if not filesystem.exists(manifest_url):
+        return None
+
+    with filesystem.open(manifest_url, "r") as manifest_file:
+        manifest = json.load(manifest_file)
+
+    expected = {
+        "tile_id": tile_id.upper(),
+        "start_year": start_year,
+        "end_year": end_year,
+        "buffer": buffer,
+    }
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        logging.warning("Ignoring incompatible checkpoint manifest at %s", manifest_url)
+        return None
+
+    checkpoint_url = manifest["accumulator_url"]
+    if not filesystem.exists(checkpoint_url):
+        logging.warning("Checkpoint raster is missing: %s", checkpoint_url)
+        return None
+
+    accumulator.parent.mkdir(parents=True, exist_ok=True)
+    filesystem.get(checkpoint_url, str(accumulator))
+    completed_year = int(manifest["completed_year"])
+    logging.info(
+        "Restored checkpoint through %s from %s", completed_year, checkpoint_url
+    )
+    return completed_year
+
+
+def save_checkpoint(
+    accumulator: Path,
+    checkpoint_prefix: str,
+    *,
+    tile_id: str,
+    start_year: int,
+    end_year: int,
+    completed_year: int,
+    buffer: int,
+) -> None:
+    """Publish an annual accumulator checkpoint, then atomically advance its
+    manifest.
+    """
+    filesystem = gcsfs.GCSFileSystem()
+    checkpoint_url = f"{checkpoint_prefix}-through-{completed_year}.tif"
+    manifest_url = f"{checkpoint_prefix}.json"
+    previous_url = None
+    if filesystem.exists(manifest_url):
+        with filesystem.open(manifest_url, "r") as previous_manifest_file:
+            previous_url = json.load(previous_manifest_file).get("accumulator_url")
+
+    filesystem.put(str(accumulator), checkpoint_url)
+    manifest = {
+        "tile_id": tile_id.upper(),
+        "start_year": start_year,
+        "end_year": end_year,
+        "completed_year": completed_year,
+        "buffer": buffer,
+        "accumulator_url": checkpoint_url,
+    }
+    with filesystem.open(manifest_url, "w") as manifest_file:
+        json.dump(manifest, manifest_file)
+
+    if previous_url and previous_url != checkpoint_url:
+        filesystem.rm(previous_url)
+    logging.info("Saved checkpoint through %s to %s", completed_year, checkpoint_url)
+
+
 def run_sequential_multiyear(
     tile_id: str,
     start_year: int,
@@ -263,6 +351,7 @@ def run_sequential_multiyear(
     mask_water: bool = True,
     buffer: int = -500,
     chunks: dict[str, int] | None = None,
+    checkpoint_prefix: str | None = None,
 ) -> Path:
     """Process each calendar year independently, then merge observation counts."""
     if end_year < start_year:
@@ -272,9 +361,21 @@ def run_sequential_multiyear(
     aoi = _load_aoi("sentinel2", None, None, tile_id, None)
     work_dir.mkdir(parents=True, exist_ok=True)
     accumulator = work_dir / f"sentinel2_{tile_id.lstrip('T')}_counts.tif"
+    completed_year = None
+    if checkpoint_prefix:
+        completed_year = restore_checkpoint(
+            accumulator,
+            checkpoint_prefix,
+            tile_id=tile_id,
+            start_year=start_year,
+            end_year=end_year,
+            buffer=buffer,
+        )
 
-    for year in range(start_year, end_year + 1):
+    first_year_to_process = max(start_year, (completed_year or start_year - 1) + 1)
+    for year in range(first_year_to_process, end_year + 1):
         logging.info("Processing Sentinel-2 tile %s for %s", tile_id, year)
+        refresh_planetary_computer_tokens()
         data = get_satellite_data(
             shp=aoi,
             tile_id=tile_id,
@@ -291,10 +392,20 @@ def run_sequential_multiyear(
             counts,
             accumulator,
             buffer,
-            reset=year == start_year,
+            reset=year == start_year and completed_year is None,
         )
         del counts, data
         gc.collect()
+        if checkpoint_prefix:
+            save_checkpoint(
+                accumulator,
+                checkpoint_prefix,
+                tile_id=tile_id,
+                start_year=start_year,
+                end_year=end_year,
+                completed_year=year,
+                buffer=buffer,
+            )
 
     finalize_count_accumulator(accumulator, output)
     if mask_water:
@@ -314,6 +425,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chunk-x", type=int, default=1024)
     parser.add_argument("--chunk-y", type=int, default=1024)
     parser.add_argument("--no-mask-water", action="store_true")
+    parser.add_argument(
+        "--checkpoint-prefix",
+        help="Optional GCS prefix used to restore and save annual checkpoints.",
+    )
     return parser
 
 
@@ -332,6 +447,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         mask_water=not args.no_mask_water,
         buffer=args.buffer,
         chunks={"x": args.chunk_x, "y": args.chunk_y},
+        checkpoint_prefix=args.checkpoint_prefix,
     )
     return 0
 

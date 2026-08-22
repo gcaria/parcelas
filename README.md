@@ -149,6 +149,13 @@ mask is fetched and reprojected once after the merge, and only the final output 
 encoded as a compressed COG. Comparison outputs are published separately from
 the one-year regional mosaic.
 
+When a GCS checkpoint prefix is configured, the workflow uploads the count
+accumulator after every completed year and records the latest completed year in
+a manifest. A rerun restores that accumulator and continues with the next year.
+Planetary Computer signing tokens are refreshed before every annual search so a
+long-running job does not reuse a token near expiry. Checkpoints are compatible
+only with the same tile, year range, and clipping buffer.
+
 The same operation can be run from the command line:
 
 ```bash
@@ -156,7 +163,8 @@ python -m data_pipeline.run_multiyear \
   --tile-id T19HCD \
   --start-year 2020 \
   --end-year 2024 \
-  --output output/sentinel2_19HCD_2020_2024_uint8.tif
+  --output output/sentinel2_19HCD_2020_2024_uint8.tif \
+  --checkpoint-prefix gs://my-bucket/checkpoints/sentinel2_19HCD_2020_2024
 ```
 
 ### Progressive Sentinel Preview

@@ -1,7 +1,7 @@
 """Tests for sequential multi-year clear-sky processing."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import rasterio
@@ -10,10 +10,12 @@ import xarray as xr
 from rasterio.transform import from_origin
 
 from data_pipeline.run_multiyear import (
+    TOKEN_CACHE,
     accumulate_counts,
     compute_clear_sky_counts,
     finalize_count_accumulator,
     merge_count_cogs,
+    refresh_planetary_computer_tokens,
     run_sequential_multiyear,
 )
 
@@ -103,6 +105,14 @@ def test_windowed_accumulator_weights_years_without_annual_rasters(tmp_path):
         np.testing.assert_array_equal(result.read(1), [[90, 80], [0, 50]])
 
 
+def test_refresh_planetary_computer_tokens_clears_cached_sas_tokens():
+    TOKEN_CACHE["stale-token"] = MagicMock()
+
+    refresh_planetary_computer_tokens()
+
+    assert TOKEN_CACHE == {}
+
+
 def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
     annual_data = xr.DataArray(
         np.array([[[4]]], dtype="uint8"),
@@ -125,6 +135,9 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
         patch("data_pipeline.run_multiyear.accumulate_counts") as accumulate,
         patch("data_pipeline.run_multiyear.finalize_count_accumulator") as finalize,
         patch("data_pipeline.run_multiyear.apply_surface_water_mask") as apply_mask,
+        patch(
+            "data_pipeline.run_multiyear.refresh_planetary_computer_tokens"
+        ) as refresh,
     ):
         run_sequential_multiyear(
             tile_id="T19HCD",
@@ -135,6 +148,7 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
         )
 
     assert get_data.call_count == 5
+    assert refresh.call_count == 5
     assert all(call.kwargs["mask_water"] is False for call in get_data.call_args_list)
     assert accumulate.call_count == 5
     assert accumulate.call_args_list[0].kwargs["reset"] is True
@@ -146,3 +160,48 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
     apply_mask.assert_called_once_with(
         tmp_path / "result.tif", load_aoi.return_value, {"x": 1024, "y": 1024}
     )
+
+
+def test_multiyear_resumes_after_checkpointed_year(tmp_path):
+    annual_data = xr.DataArray(
+        np.array([[[4]]], dtype="uint8"),
+        dims=("time", "y", "x"),
+        coords={"time": [0], "y": [0], "x": [0]},
+        attrs={"clear_sky_flags": [4, 5], "nodata": 0},
+    ).rio.write_crs("EPSG:32719")
+
+    with (
+        patch("data_pipeline.run_multiyear._load_aoi"),
+        patch(
+            "data_pipeline.run_multiyear.restore_checkpoint", return_value=2022
+        ) as restore,
+        patch(
+            "data_pipeline.run_multiyear.get_satellite_data",
+            return_value=annual_data,
+        ) as get_data,
+        patch("data_pipeline.run_multiyear.accumulate_counts") as accumulate,
+        patch("data_pipeline.run_multiyear.save_checkpoint") as save,
+        patch("data_pipeline.run_multiyear.finalize_count_accumulator"),
+        patch("data_pipeline.run_multiyear.apply_surface_water_mask"),
+        patch("data_pipeline.run_multiyear.refresh_planetary_computer_tokens"),
+    ):
+        run_sequential_multiyear(
+            tile_id="T19HCD",
+            start_year=2020,
+            end_year=2024,
+            output=tmp_path / "result.tif",
+            work_dir=tmp_path / "counts",
+            checkpoint_prefix="gs://bucket/checkpoint",
+        )
+
+    restore.assert_called_once()
+    assert [call.kwargs["time_range"] for call in get_data.call_args_list] == [
+        "2023-01-01/2023-12-31",
+        "2024-01-01/2024-12-31",
+    ]
+    assert accumulate.call_count == 2
+    assert all(call.kwargs["reset"] is False for call in accumulate.call_args_list)
+    assert [call.kwargs["completed_year"] for call in save.call_args_list] == [
+        2023,
+        2024,
+    ]
