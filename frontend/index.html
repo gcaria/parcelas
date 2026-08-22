@@ -82,10 +82,14 @@
         [192, 62, 56, 255],
         [127, 3, 3, 255],
       ];
-      const DISCRETE_COLORMAP = CLEAR_SKY_COLORS.map((color, index) => [
-        [index * 10, index === 9 ? 101 : (index + 1) * 10],
-        color,
-      ]);
+      // TiTiler applies the colormap after rescaling 0–100 into an 8-bit
+      // render range, so map all 256 rendered values into the ten classes.
+      const DISCRETE_COLORMAP = Object.fromEntries(
+        Array.from({ length: 256 }, (_, value) => [
+          value,
+          CLEAR_SKY_COLORS[Math.min(Math.floor((value * 10) / 256), 9)],
+        ]),
+      );
 
       debugLog(`Environment: ${isLocal ? "LOCAL" : "PRODUCTION"}`, "info");
       debugLog(`API Base URL: ${API_BASE_URL}`, "info");
