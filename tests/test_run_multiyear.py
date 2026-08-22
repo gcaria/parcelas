@@ -90,7 +90,7 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
             "data_pipeline.run_multiyear.get_satellite_data",
             return_value=annual_data,
         ) as get_data,
-        patch("data_pipeline.run_multiyear.store_count_cog"),
+        patch("data_pipeline.run_multiyear.store_count_raster"),
         patch("data_pipeline.run_multiyear.merge_count_cogs"),
         patch("data_pipeline.run_multiyear.apply_surface_water_mask") as apply_mask,
     ):

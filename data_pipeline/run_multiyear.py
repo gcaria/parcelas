@@ -46,8 +46,8 @@ def compute_clear_sky_counts(da_sat: xr.DataArray) -> xr.DataArray:
     return counts.rio.write_crs(da_sat.rio.crs)
 
 
-def store_count_cog(counts: xr.DataArray, output: Path, buffer: int) -> None:
-    """Clip and store one year's clear/valid count bands."""
+def store_count_raster(counts: xr.DataArray, output: Path, buffer: int) -> None:
+    """Clip and store one year's counts as a lightweight tiled scratch raster."""
     raster_crs = counts.rio.crs
     if raster_crs is None:
         raise ValueError("Clear-sky count data has no spatial CRS")
@@ -58,7 +58,13 @@ def store_count_cog(counts: xr.DataArray, output: Path, buffer: int) -> None:
     )
     clip_geometry = _make_clip_geometry(aoi, raster_crs, buffer)
     clipped = counts.rio.clip([clip_geometry], raster_crs, drop=True)
-    clipped.rio.to_raster(output, driver="COG", dtype="uint16", compress="DEFLATE")
+    clipped.rio.to_raster(
+        output,
+        driver="GTiff",
+        dtype="uint16",
+        tiled=True,
+        BIGTIFF="IF_SAFER",
+    )
 
 
 def merge_count_cogs(inputs: Sequence[Path], output: Path) -> None:
@@ -192,7 +198,7 @@ def run_sequential_multiyear(
         data.attrs["clear_sky_flags"] = SENSOR_CONFIGS["sentinel2"]["clear_sky_flags"]
         counts = compute_clear_sky_counts(data)
         count_path = work_dir / f"sentinel2_{tile_id.lstrip('T')}_{year}_counts.tif"
-        store_count_cog(counts, count_path, buffer)
+        store_count_raster(counts, count_path, buffer)
         count_paths.append(count_path)
         del counts, data
         gc.collect()
