@@ -410,7 +410,7 @@ def test_run_clear_sky_pipeline_processes_sentinel2_to_cog(
 ):
     """Process retrieved Sentinel-2 SCL data through to the final COG."""
     aoi = gpd.GeoDataFrame(
-        geometry=[box(300000, 6200000, 300020, 6200020)], crs="EPSG:32719"
+        geometry=[box(299995, 6199995, 300025, 6200025)], crs="EPSG:32719"
     )
     mock_get_mgrs_tile.return_value = aoi
 
