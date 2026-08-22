@@ -172,7 +172,7 @@ def run_sequential_multiyear(
     if end_year < start_year:
         raise ValueError("end_year must be greater than or equal to start_year")
 
-    chunks = chunks or {"x": 512, "y": 512}
+    chunks = chunks or {"x": 1024, "y": 1024}
     aoi = _load_aoi("sentinel2", None, None, tile_id, None)
     work_dir.mkdir(parents=True, exist_ok=True)
     count_paths: list[Path] = []
@@ -212,8 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, default=Path("annual-counts"))
     parser.add_argument("--buffer", type=int, default=-500)
-    parser.add_argument("--chunk-x", type=int, default=512)
-    parser.add_argument("--chunk-y", type=int, default=512)
+    parser.add_argument("--chunk-x", type=int, default=1024)
+    parser.add_argument("--chunk-y", type=int, default=1024)
     parser.add_argument("--no-mask-water", action="store_true")
     return parser
 

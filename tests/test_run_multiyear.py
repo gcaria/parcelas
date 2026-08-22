@@ -105,5 +105,5 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
     assert get_data.call_count == 5
     assert all(call.kwargs["mask_water"] is False for call in get_data.call_args_list)
     apply_mask.assert_called_once_with(
-        tmp_path / "result.tif", load_aoi.return_value, {"x": 512, "y": 512}
+        tmp_path / "result.tif", load_aoi.return_value, {"x": 1024, "y": 1024}
     )
