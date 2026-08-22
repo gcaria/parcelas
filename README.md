@@ -136,16 +136,18 @@ rule on the bucket's `previews/` prefix to remove old preview files.
 
 The **Run multi-year Sentinel pipeline** workflow processes complete calendar
 years one at a time to avoid retaining the full temporal stack in memory. Each
-year is reduced to two intermediate bands:
+year is reduced to two count bands:
 
 - `clear_count`: clear observations per pixel
 - `valid_count`: valid observations per pixel
 
-The final percentage is calculated as
-`100 × sum(clear_count) / sum(valid_count)`. Annual percentages are not averaged,
-because observation counts vary by year and pixel. The merge reads and writes
-small raster windows, and comparison outputs are published separately from the
-one-year regional mosaic.
+The count bands are added immediately to a single windowed `uint32` accumulator
+on disk, rather than retaining annual rasters. The final percentage is calculated
+as `100 × sum(clear_count) / sum(valid_count)`. Annual percentages are not
+averaged because observation counts vary by year and pixel. The static JRC water
+mask is fetched and reprojected once after the merge, and only the final output is
+encoded as a compressed COG. Comparison outputs are published separately from
+the one-year regional mosaic.
 
 The same operation can be run from the command line:
 
