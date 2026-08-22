@@ -7,6 +7,14 @@ on:
     branches: [ main ]
 
 jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check frontend JavaScript syntax
+        run: node frontend/check-inline-js.mjs
+
   test-data-pipeline:
     runs-on: ubuntu-latest
     container: python:3.11-slim
