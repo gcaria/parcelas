@@ -141,7 +141,7 @@ def test_get_satellite_data_landsat(mock_stac_load, mock_client, sample_geometry
     mock_da = xr.DataArray(
         np.ones((2, 10, 10)),
         dims=("time", "y", "x"),
-    )
+    ).rio.write_crs("EPSG:4326")
     mock_stac_load.return_value = {"qa_pixel": mock_da}
 
     result = get_satellite_data(
@@ -185,7 +185,13 @@ def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geomet
     mock_da = xr.DataArray(
         np.ones((2, 10, 10)),
         dims=("time", "y", "x"),
+        coords={
+            "y": xr.DataArray(range(10), dims="y", attrs={"crs": "EPSG:32719"}),
+            "x": xr.DataArray(range(10), dims="x", attrs={"crs": "EPSG:32719"}),
+        },
     )
+    assert mock_da.odc.crs is not None
+    assert mock_da.rio.crs is None
     mock_stac_load.return_value = {"SCL": mock_da}
 
     result = get_satellite_data(
@@ -199,6 +205,7 @@ def test_get_satellite_data_sentinel2(mock_stac_load, mock_client, sample_geomet
     assert isinstance(result, xr.DataArray)
     assert result.attrs["sensor"] == "sentinel2"
     assert result.attrs["clear_sky_flags"] == [4, 5, 6, 11]
+    assert result.rio.crs.to_epsg() == 32719
     assert "aoi_wkt" in result.attrs
     assert "aoi_crs" in result.attrs
     mock_catalog.search.assert_called_once_with(
@@ -226,7 +233,9 @@ def test_get_landsat_data_wrapper(mock_stac_load, mock_client, sample_geometry):
     mock_catalog.search.return_value = mock_search
     mock_search.item_collection.return_value = ["item1"]
     mock_stac_load.return_value = {
-        "qa_pixel": xr.DataArray(np.ones((1, 10, 10)), dims=("time", "y", "x"))
+        "qa_pixel": xr.DataArray(
+            np.ones((1, 10, 10)), dims=("time", "y", "x")
+        ).rio.write_crs("EPSG:4326")
     }
 
     result = get_landsat_data(

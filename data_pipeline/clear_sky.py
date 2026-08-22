@@ -139,6 +139,12 @@ def get_satellite_data(
         nodata=config["nodata"],
     )[data_band]
 
+    if da_sat.rio.crs is None:
+        odc_crs = da_sat.odc.crs
+        if odc_crs is None:
+            raise ValueError("Satellite data has no spatial CRS")
+        da_sat = da_sat.rio.write_crs(str(odc_crs))
+
     if mask_water:
         da_sw = get_jrc_surface_water(shp, chunks=chunks)["occurrence"]
         da_sw = da_sw.rio.reproject_match(da_sat).squeeze()
