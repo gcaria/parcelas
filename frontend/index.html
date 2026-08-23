@@ -50,6 +50,8 @@
         landsat: "gs://parcelas-wrs2/mosaics/mosaic_masked.json.gz",
         sentinel2:
           "gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz",
+        sentinel2_2020_2024:
+          "gs://parcelas-wrs2/comparisons/sentinel2-multiyear/run-32605305763/mosaic.json.gz",
       };
       const MOSAIC_URLS =
         typeof SENSOR_MOSAIC_URLS !== "undefined"
@@ -69,7 +71,9 @@
       const SENSOR_LABELS = {
         landsat: "Landsat",
         sentinel2: "Sentinel-2",
+        sentinel2_2020_2024: "Sentinel-2 (2020–2024)",
       };
+      const ZOOM_ON_SELECT = new Set(["sentinel2_2020_2024"]);
       const CLEAR_SKY_COLORS = [
         [59, 76, 192, 255],
         [68, 90, 204, 255],
@@ -202,8 +206,12 @@
 
           L.DomEvent.disableClickPropagation(container);
           L.DomEvent.disableScrollPropagation(container);
-          select.addEventListener("change", (event) => {
-            setSensor(event.target.value);
+          select.addEventListener("change", async (event) => {
+            const sensor = event.target.value;
+            if (ZOOM_ON_SELECT.has(sensor)) {
+              await zoomToMosaic(MOSAIC_URLS[sensor]);
+            }
+            setSensor(sensor);
           });
 
           return container;
@@ -360,8 +368,8 @@
       const initializeMosaic = async () => {
         // Position the map before adding a preview layer. Adding it first makes
         // Leaflet request tiles for every intermediate zoom level.
-        if (previewMosaicUrl) {
-          await zoomToMosaic(previewMosaicUrl);
+        if (previewMosaicUrl || ZOOM_ON_SELECT.has(DEFAULT_SELECTED_SENSOR)) {
+          await zoomToMosaic(MOSAIC_URLS[DEFAULT_SELECTED_SENSOR]);
         }
         setSensor(DEFAULT_SELECTED_SENSOR);
       };
