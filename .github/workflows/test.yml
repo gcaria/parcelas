@@ -34,7 +34,7 @@ jobs:
         run: pip install -r requirements.txt pytest pytest-cov
 
       - name: Run tests
-        run: pytest tests/test_shapefiles.py tests/test_clear_sky.py tests/test_run_tile.py tests/test_run_multiyear.py -v --cov=data_pipeline
+        run: pytest tests/test_shapefiles.py tests/test_clear_sky.py tests/test_run_tile.py tests/test_run_multiyear.py tests/test_run_cloud_job.py -v --cov=data_pipeline
         env:
           PYTHONPATH: .
 

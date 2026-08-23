@@ -19,4 +19,4 @@ COPY data_pipeline/ ./data_pipeline/
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-ENTRYPOINT ["python", "-m", "data_pipeline.run_tile"]
+ENTRYPOINT ["python", "-m", "data_pipeline.run_cloud_job"]

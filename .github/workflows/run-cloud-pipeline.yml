@@ -1,0 +1,116 @@
+name: Run pipeline on Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Pipeline mode
+        required: true
+        default: multiyear
+        type: choice
+        options:
+          - multiyear
+          - tile
+      sensor:
+        description: Sensor for single-tile mode
+        required: true
+        default: sentinel2
+        type: choice
+        options:
+          - sentinel2
+          - landsat
+      tile_id:
+        description: Sentinel-2 MGRS tile ID
+        required: false
+        default: T19HCD
+        type: string
+      path:
+        description: Landsat WRS-2 path
+        required: false
+        type: string
+      row:
+        description: Landsat WRS-2 row
+        required: false
+        type: string
+      time_range:
+        description: Time range for single-tile mode
+        required: true
+        default: 2020-01-01/2020-12-31
+        type: string
+      start_year:
+        description: First year for multi-year mode
+        required: true
+        default: "2020"
+        type: string
+      end_year:
+        description: Last year for multi-year mode
+        required: true
+        default: "2024"
+        type: string
+      mask_water:
+        description: Apply the JRC persistent-water mask
+        required: true
+        default: true
+        type: boolean
+      buffer:
+        description: Inward clipping buffer in metres
+        required: true
+        default: "-500"
+        type: string
+      output_gcs_prefix:
+        description: GCS output folder
+        required: true
+        default: gs://parcelas-wrs2/cloud-run-results
+        type: string
+      checkpoint_gcs_prefix:
+        description: GCS checkpoint folder for multi-year mode
+        required: true
+        default: gs://parcelas-wrs2/checkpoints/cloud-run
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start Cloud Run execution
+        env:
+          MODE: ${{ inputs.mode }}
+          SENSOR: ${{ inputs.sensor }}
+          TILE_ID: ${{ inputs.tile_id }}
+          WRS_PATH: ${{ inputs.path }}
+          WRS_ROW: ${{ inputs.row }}
+          TIME_RANGE: ${{ inputs.time_range }}
+          START_YEAR: ${{ inputs.start_year }}
+          END_YEAR: ${{ inputs.end_year }}
+          MASK_WATER: ${{ inputs.mask_water }}
+          BUFFER: ${{ inputs.buffer }}
+          OUTPUT_PREFIX: ${{ inputs.output_gcs_prefix }}
+          CHECKPOINT_ROOT: ${{ inputs.checkpoint_gcs_prefix }}
+        run: |
+          checkpoint_prefix="${CHECKPOINT_ROOT%/}/sentinel2_${TILE_ID}_${START_YEAR}_${END_YEAR}"
+          execution=$(gcloud run jobs execute parcelas-pipeline \
+            --project=parcelas-api \
+            --region=us-central1 \
+            --async \
+            --format='value(metadata.name)' \
+            --update-env-vars="PIPELINE_MODE=${MODE},SENSOR=${SENSOR},TILE_ID=${TILE_ID},WRS_PATH=${WRS_PATH},WRS_ROW=${WRS_ROW},TIME_RANGE=${TIME_RANGE},START_YEAR=${START_YEAR},END_YEAR=${END_YEAR},MASK_WATER=${MASK_WATER},BUFFER=${BUFFER},OUTPUT_GCS_PREFIX=${OUTPUT_PREFIX},CHECKPOINT_PREFIX=${checkpoint_prefix}")
+          execution_name="${execution##*/}"
+          execution_url="https://console.cloud.google.com/run/jobs/executions/details/us-central1/${execution_name}?project=parcelas-api"
+          {
+            echo "## Cloud Run pipeline execution"
+            echo
+            echo "[$execution_name]($execution_url)"
+            echo
+            echo "Output folder: \`$OUTPUT_PREFIX\`"
+          } >> "$GITHUB_STEP_SUMMARY"
