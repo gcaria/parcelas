@@ -37,3 +37,7 @@ jobs:
         run: |
           python -m data_pipeline.create_progressive_mosaic \
             --output gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz
+          python -m data_pipeline.create_progressive_mosaic \
+            --input-pattern "gs://parcelas-wrs2/previews/sentinel2-2020-2024/sentinel2_*_uint8.tif" \
+            --all-matches \
+            --output gs://parcelas-wrs2/previews/sentinel2-2020-2024/mosaic.json.gz

@@ -49,7 +49,7 @@ jobs:
     needs: seed-completed-tiles
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 20
       matrix:
         tile:
           - T18HWC
@@ -138,12 +138,3 @@ jobs:
         run: |
           tile_key="${TILE_ID#T}"
           gcloud storage cp output/result.tif "$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
-
-      - name: Install mosaic dependencies
-        run: pip install -r api/requirements.txt
-      - name: Publish all completed tiles to the frontend
-        run: |
-          python -m data_pipeline.create_progressive_mosaic \
-            --input-pattern "$OUTPUT_PREFIX/sentinel2_*_uint8.tif" \
-            --all-matches \
-            --output "$OUTPUT_PREFIX/mosaic.json.gz"
