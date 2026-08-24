@@ -3,5 +3,5 @@ const SENSOR_MOSAIC_URLS = {
   landsat: "gs://parcelas-wrs2/mosaics/mosaic_masked.json.gz",
   sentinel2: "gs://parcelas-wrs2/previews/progressive/sentinel2-2020.json.gz",
   sentinel2_2020_2024:
-    "gs://parcelas-wrs2/comparisons/sentinel2-multiyear/run-32605305763/mosaic.json.gz",
+    "gs://parcelas-wrs2/previews/sentinel2-2020-2024/mosaic.json.gz",
 };

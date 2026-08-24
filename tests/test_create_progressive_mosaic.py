@@ -2,7 +2,11 @@
 
 from unittest.mock import Mock, patch
 
-from data_pipeline.create_progressive_mosaic import main, select_latest_cogs
+from data_pipeline.create_progressive_mosaic import (
+    main,
+    select_all_cogs,
+    select_latest_cogs,
+)
 
 
 def test_select_latest_cogs_keeps_newest_run_per_tile():
@@ -18,6 +22,12 @@ def test_select_latest_cogs_keeps_newest_run_per_tile():
         "gs://parcelas-wrs2/previews/run-103/sentinel2_18HYC_uint8.tif",
         "gs://parcelas-wrs2/previews/run-105/sentinel2_19HCD_uint8.tif",
     ]
+
+
+def test_select_all_cogs_normalizes_and_sorts_urls():
+    assert select_all_cogs(
+        ["bucket/five-year/b.tif", "gs://bucket/five-year/a.tif"]
+    ) == ["gs://bucket/five-year/a.tif", "gs://bucket/five-year/b.tif"]
 
 
 @patch("data_pipeline.create_progressive_mosaic.fsspec.open")
@@ -46,4 +56,30 @@ def test_main_globs_unexpanded_input_pattern(mock_url_to_fs, mock_mosaic, mock_o
 
     filesystem.glob.assert_called_once_with(
         "bucket/previews/run-*/sentinel2_*_uint8.tif"
+    )
+
+
+@patch("data_pipeline.create_progressive_mosaic.fsspec.open")
+@patch("data_pipeline.create_progressive_mosaic.MosaicJSON")
+@patch("data_pipeline.create_progressive_mosaic.fsspec.core.url_to_fs")
+def test_main_can_include_all_matching_cogs(mock_url_to_fs, mock_mosaic, mock_open):
+    filesystem = Mock()
+    filesystem.glob.return_value = ["bucket/five-year/sentinel2_19HCC_uint8.tif"]
+    mock_url_to_fs.return_value = (filesystem, "bucket/five-year/*.tif")
+    mock_mosaic.from_urls.return_value.model_dump_json.return_value = "{}"
+
+    assert (
+        main(
+            [
+                "--input-pattern",
+                "gs://bucket/five-year/*.tif",
+                "--all-matches",
+                "--output",
+                "result.gz",
+            ]
+        )
+        == 0
+    )
+    mock_mosaic.from_urls.assert_called_once_with(
+        ["gs://bucket/five-year/sentinel2_19HCC_uint8.tif"]
     )
