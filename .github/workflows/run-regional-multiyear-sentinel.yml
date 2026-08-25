@@ -52,6 +52,11 @@ jobs:
       max-parallel: 20
       matrix:
         tile:
+          - T18GWA
+          - T18GXA
+          - T18GXV
+          - T18GYA
+          - T18GYV
           - T18HWC
           - T18HXB
           - T18HXC
@@ -66,6 +71,8 @@ jobs:
           - T18HYG
           - T18HYH
           - T19HBA
+          - T19GBQ
+          - T19GBR
           - T19HBB
           - T19HBC
           - T19HBD
