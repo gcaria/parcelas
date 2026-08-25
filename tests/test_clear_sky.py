@@ -134,6 +134,7 @@ def test_compute_clear_sky_percentage_excludes_invalid_sentinel_observations():
             ]
         ),
         dims=("time", "y", "x"),
+        coords={"time": ["2020-01-01", "2020-01-02", "2020-01-03"]},
         attrs={"clear_sky_flags": [4, 5, 6, 11], "nodata": 0},
     )
 
@@ -141,6 +142,26 @@ def test_compute_clear_sky_percentage_excludes_invalid_sentinel_observations():
 
     np.testing.assert_allclose(result.values[0, :2], [0.5, 1.0])
     assert np.isnan(result.values[0, 2])
+
+
+def test_compute_clear_sky_percentage_deduplicates_calendar_days():
+    """Give multiple acquisitions on one date the weight of one clear day."""
+    scl = xr.DataArray(
+        np.array([[[4]], [[9]], [[9]]], dtype="uint8"),
+        dims=("time", "y", "x"),
+        coords={
+            "time": [
+                "2020-01-01T10:00:00",
+                "2020-01-01T14:00:00",
+                "2020-01-02T10:00:00",
+            ]
+        },
+        attrs={"clear_sky_flags": [4, 5, 6, 11], "nodata": 0},
+    )
+
+    result = compute_clear_sky_percentage(scl)
+
+    np.testing.assert_allclose(result.values, [[0.5]])
 
 
 def test_compute_clear_sky_percentage_empty():

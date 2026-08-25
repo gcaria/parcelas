@@ -15,6 +15,7 @@ env:
   END_YEAR: "2024"
   OUTPUT_PREFIX: gs://parcelas-wrs2/previews/sentinel2-2020-2024
   CHECKPOINT_PREFIX: gs://parcelas-wrs2/checkpoints/sentinel2-multiyear
+  METRIC_VERSION: daily-v1
 
 jobs:
   seed-completed-tiles:
@@ -105,7 +106,8 @@ jobs:
         run: |
           tile_key="${TILE_ID#T}"
           final_url="$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
-          if gcloud storage ls "$final_url" >/dev/null 2>&1; then
+          version_url="$final_url.$METRIC_VERSION"
+          if gcloud storage ls "$version_url" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Already completed: $final_url"
           else
@@ -144,4 +146,7 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: |
           tile_key="${TILE_ID#T}"
-          gcloud storage cp output/result.tif "$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
+          final_url="$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
+          gcloud storage cp output/result.tif "$final_url"
+          printf '%s\n' "$METRIC_VERSION" > output/metric-version.txt
+          gcloud storage cp output/metric-version.txt "$final_url.$METRIC_VERSION"

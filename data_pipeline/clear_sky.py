@@ -289,14 +289,9 @@ def compute_clear_sky_percentage(
     if clear_sky_qa_flags is None:
         clear_sky_qa_flags = da_ls.attrs.get("clear_sky_flags", CLEAR_SKY_QA_FLAGS)
     raster_crs = da_ls.rio.crs
-    valid_observation = da_ls.notnull()
-    nodata = da_ls.attrs.get("nodata")
-    if nodata is not None:
-        valid_observation = valid_observation & (da_ls != nodata)
-
-    clear_sky = da_ls.isin(clear_sky_qa_flags) & valid_observation
-    clear_count = clear_sky.astype(int).sum(dim="time")
-    valid_count = valid_observation.astype(int).sum(dim="time")
+    clear_sky, valid_observation = _daily_clear_and_valid(da_ls, clear_sky_qa_flags)
+    clear_count = clear_sky.astype(int).sum(dim="day")
+    valid_count = valid_observation.astype(int).sum(dim="day")
     result = (clear_count / valid_count).where(valid_count > 0)
     result.attrs.update(da_ls.attrs)
 
@@ -304,6 +299,23 @@ def compute_clear_sky_percentage(
         result = result.rio.write_crs(raster_crs)
 
     return result
+
+
+def _daily_clear_and_valid(
+    data: "xarray.DataArray", clear_sky_flags: List[int]
+) -> tuple["xarray.DataArray", "xarray.DataArray"]:
+    """Collapse same-day observations into per-pixel clear and valid flags."""
+    valid_observation = data.notnull()
+    nodata = data.attrs.get("nodata")
+    if nodata is not None:
+        valid_observation = valid_observation & (data != nodata)
+
+    clear_sky = data.isin(clear_sky_flags) & valid_observation
+    day = data.time.astype("datetime64[D]").rename("day")
+    return (
+        clear_sky.groupby(day).any(dim="time"),
+        valid_observation.groupby(day).any(dim="time"),
+    )
 
 
 def store_clear_sky_percentage(

@@ -1,7 +1,7 @@
 """Tests for sequential multi-year clear-sky processing."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import numpy as np
 import rasterio
@@ -16,6 +16,7 @@ from data_pipeline.run_multiyear import (
     finalize_count_accumulator,
     merge_count_cogs,
     refresh_planetary_computer_tokens,
+    restore_checkpoint,
     run_sequential_multiyear,
 )
 
@@ -31,7 +32,11 @@ def test_compute_clear_sky_counts_preserves_denominator():
             dtype="float32",
         ),
         dims=("time", "y", "x"),
-        coords={"time": [0, 1, 2], "y": [1, 0], "x": [0, 1]},
+        coords={
+            "time": ["2020-01-01", "2020-01-02", "2020-01-03"],
+            "y": [1, 0],
+            "x": [0, 1],
+        },
         attrs={"clear_sky_flags": [4, 5], "nodata": 0},
     ).rio.write_crs("EPSG:32719")
 
@@ -39,6 +44,51 @@ def test_compute_clear_sky_counts_preserves_denominator():
 
     np.testing.assert_array_equal(counts.sel(band=1), [[2, 2], [0, 0]])
     np.testing.assert_array_equal(counts.sel(band=2), [[3, 2], [2, 0]])
+
+
+def test_compute_clear_sky_counts_deduplicates_calendar_days():
+    data = xr.DataArray(
+        np.array([[[4]], [[9]], [[9]]], dtype="uint8"),
+        dims=("time", "y", "x"),
+        coords={
+            "time": [
+                "2020-01-01T10:00:00",
+                "2020-01-01T14:00:00",
+                "2020-01-02T10:00:00",
+            ]
+        },
+        attrs={"clear_sky_flags": [4, 5], "nodata": 0},
+    ).rio.write_crs("EPSG:32719")
+
+    counts = compute_clear_sky_counts(data)
+
+    np.testing.assert_array_equal(counts.sel(band=1), [[1]])
+    np.testing.assert_array_equal(counts.sel(band=2), [[2]])
+
+
+@patch("data_pipeline.run_multiyear.gcsfs.GCSFileSystem")
+def test_restore_checkpoint_rejects_pre_daily_counts(mock_filesystem, tmp_path):
+    filesystem = mock_filesystem.return_value
+    filesystem.exists.return_value = True
+    filesystem.open = mock_open(
+        read_data=(
+            '{"tile_id":"T19HCD","start_year":2020,"end_year":2024,'
+            '"completed_year":2024,"buffer":-500,'
+            '"accumulator_url":"gs://bucket/counts.tif"}'
+        )
+    )
+
+    restored = restore_checkpoint(
+        tmp_path / "counts.tif",
+        "gs://bucket/checkpoint",
+        tile_id="T19HCD",
+        start_year=2020,
+        end_year=2024,
+        buffer=-500,
+    )
+
+    assert restored is None
+    filesystem.get.assert_not_called()
 
 
 def _write_counts(path: Path, clear: np.ndarray, valid: np.ndarray) -> None:
@@ -117,7 +167,7 @@ def test_multiyear_applies_static_water_mask_once_after_merge(tmp_path):
     annual_data = xr.DataArray(
         np.array([[[4]]], dtype="uint8"),
         dims=("time", "y", "x"),
-        coords={"time": [0], "y": [0], "x": [0]},
+        coords={"time": ["2020-01-01"], "y": [0], "x": [0]},
         attrs={
             "clear_sky_flags": [4, 5],
             "nodata": 0,
@@ -166,7 +216,7 @@ def test_multiyear_resumes_after_checkpointed_year(tmp_path):
     annual_data = xr.DataArray(
         np.array([[[4]]], dtype="uint8"),
         dims=("time", "y", "x"),
-        coords={"time": [0], "y": [0], "x": [0]},
+        coords={"time": ["2020-01-01"], "y": [0], "x": [0]},
         attrs={"clear_sky_flags": [4, 5], "nodata": 0},
     ).rio.write_crs("EPSG:32719")
 

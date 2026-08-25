@@ -21,11 +21,14 @@ from rasterio.shutil import copy as copy_raster
 
 from data_pipeline.clear_sky import (
     SENSOR_CONFIGS,
+    _daily_clear_and_valid,
     _load_aoi,
     _make_clip_geometry,
     get_jrc_surface_water,
     get_satellite_data,
 )
+
+CHECKPOINT_VERSION = 2
 
 
 def compute_clear_sky_counts(da_sat: xr.DataArray) -> xr.DataArray:
@@ -33,14 +36,9 @@ def compute_clear_sky_counts(da_sat: xr.DataArray) -> xr.DataArray:
     if len(da_sat.time) == 0:
         raise ValueError("Cannot compute clear-sky counts from empty data")
 
-    valid = da_sat.notnull()
-    nodata = da_sat.attrs.get("nodata")
-    if nodata is not None:
-        valid = valid & (da_sat != nodata)
-
-    clear = da_sat.isin(da_sat.attrs["clear_sky_flags"]) & valid
+    clear, valid = _daily_clear_and_valid(da_sat, da_sat.attrs["clear_sky_flags"])
     counts = xr.concat(
-        [clear.sum("time"), valid.sum("time")],
+        [clear.sum("day"), valid.sum("day")],
         dim=xr.IndexVariable("band", [1, 2]),
     ).astype("uint16")
     counts.attrs.update(da_sat.attrs)
@@ -281,6 +279,7 @@ def restore_checkpoint(
         manifest = json.load(manifest_file)
 
     expected = {
+        "version": CHECKPOINT_VERSION,
         "tile_id": tile_id.upper(),
         "start_year": start_year,
         "end_year": end_year,
@@ -327,6 +326,7 @@ def save_checkpoint(
 
     filesystem.put(str(accumulator), checkpoint_url)
     manifest = {
+        "version": CHECKPOINT_VERSION,
         "tile_id": tile_id.upper(),
         "start_year": start_year,
         "end_year": end_year,
