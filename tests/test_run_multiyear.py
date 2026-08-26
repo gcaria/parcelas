@@ -12,10 +12,12 @@ from rasterio.transform import from_origin
 from data_pipeline.run_multiyear import (
     TOKEN_CACHE,
     accumulate_counts,
+    compute_acquisition_counts,
     compute_clear_sky_counts,
     finalize_count_accumulator,
     merge_count_cogs,
     refresh_planetary_computer_tokens,
+    replace_counts,
     restore_checkpoint,
     run_sequential_multiyear,
 )
@@ -64,6 +66,20 @@ def test_compute_clear_sky_counts_deduplicates_calendar_days():
 
     np.testing.assert_array_equal(counts.sel(band=1), [[1]])
     np.testing.assert_array_equal(counts.sel(band=2), [[2]])
+
+
+def test_acquisition_counts_preserve_same_day_duplicates():
+    data = xr.DataArray(
+        np.array([[[4]], [[9]], [[9]]], dtype="uint8"),
+        dims=("time", "y", "x"),
+        coords={"time": ["2023-01-01T10:00:00", "2023-01-01T14:00:00", "2023-01-02"]},
+        attrs={"clear_sky_flags": [4, 5], "nodata": 0},
+    ).rio.write_crs("EPSG:32719")
+
+    counts = compute_acquisition_counts(data)
+
+    np.testing.assert_array_equal(counts.sel(band=1), [[1]])
+    np.testing.assert_array_equal(counts.sel(band=2), [[3]])
 
 
 @patch("data_pipeline.run_multiyear.gcsfs.GCSFileSystem")
@@ -153,6 +169,20 @@ def test_windowed_accumulator_weights_years_without_annual_rasters(tmp_path):
         np.testing.assert_array_equal(counts.read(2), [[10, 10], [0, 6]])
     with rasterio.open(output) as result:
         np.testing.assert_array_equal(result.read(1), [[90, 80], [0, 50]])
+
+
+def test_replace_counts_subtracts_old_year_and_adds_daily_year(tmp_path):
+    accumulator = tmp_path / "counts.tif"
+    aggregate = _count_data(np.array([[20, 10], [5, 0]]), np.array([[40, 20], [10, 0]]))
+    old = _count_data(np.array([[8, 4], [2, 0]]), np.array([[12, 8], [4, 0]]))
+    new = _count_data(np.array([[5, 3], [1, 0]]), np.array([[7, 5], [2, 0]]))
+    accumulate_counts(aggregate, accumulator, buffer=0, reset=True)
+
+    replace_counts(old, new, accumulator, buffer=0)
+
+    with rasterio.open(accumulator) as result:
+        np.testing.assert_array_equal(result.read(1), [[17, 9], [4, 0]])
+        np.testing.assert_array_equal(result.read(2), [[35, 17], [8, 0]])
 
 
 def test_refresh_planetary_computer_tokens_clears_cached_sas_tokens():

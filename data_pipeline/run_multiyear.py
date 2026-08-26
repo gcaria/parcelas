@@ -47,6 +47,24 @@ def compute_clear_sky_counts(da_sat: xr.DataArray) -> xr.DataArray:
     return counts.rio.write_crs(da_sat.rio.crs)
 
 
+def compute_acquisition_counts(da_sat: xr.DataArray) -> xr.DataArray:
+    """Return pre-deduplication clear and valid acquisition counts."""
+    if len(da_sat.time) == 0:
+        raise ValueError("Cannot compute clear-sky counts from empty data")
+
+    nodata = da_sat.attrs.get("nodata", 0)
+    valid = da_sat.notnull() & (da_sat != nodata)
+    clear = da_sat.isin(da_sat.attrs["clear_sky_flags"]) & valid
+    counts = xr.concat(
+        [clear.sum("time"), valid.sum("time")],
+        dim=xr.IndexVariable("band", [1, 2]),
+    ).astype("uint16")
+    counts.attrs.update(da_sat.attrs)
+    counts.attrs["band_1"] = "clear_count"
+    counts.attrs["band_2"] = "valid_count"
+    return counts.rio.write_crs(da_sat.rio.crs)
+
+
 def accumulate_counts(
     counts: xr.DataArray,
     accumulator: Path,
@@ -113,6 +131,60 @@ def accumulate_counts(
             if not create:
                 yearly = yearly + destination.read(window=window, out_dtype="uint32")
             destination.write(yearly, window=window)
+
+
+def replace_counts(
+    old_counts: xr.DataArray,
+    new_counts: xr.DataArray,
+    accumulator: Path,
+    buffer: int,
+) -> None:
+    """Replace one year's contribution in an existing count accumulator."""
+    if not accumulator.exists():
+        raise FileNotFoundError(f"Count accumulator does not exist: {accumulator}")
+    if old_counts.rio.crs != new_counts.rio.crs:
+        raise ValueError("Old and new yearly counts have different CRSs")
+
+    aoi = geopandas.GeoDataFrame(
+        geometry=[shapely.from_wkt(new_counts.attrs["aoi_wkt"])],
+        crs=new_counts.attrs["aoi_crs"],
+    )
+    raster_crs = new_counts.rio.crs
+    clip_geometry = _make_clip_geometry(aoi, raster_crs, buffer)
+    old_clipped = old_counts.rio.clip([clip_geometry], raster_crs, drop=True)
+    new_clipped = new_counts.rio.clip([clip_geometry], raster_crs, drop=True)
+
+    with rasterio.open(accumulator, "r+") as destination:
+        expected = (
+            destination.crs,
+            destination.transform,
+            destination.width,
+            destination.height,
+        )
+        for counts in (old_clipped, new_clipped):
+            actual = (
+                counts.rio.crs,
+                counts.rio.transform(),
+                counts.rio.width,
+                counts.rio.height,
+            )
+            if counts.sizes.get("band") != 2 or actual != expected:
+                raise ValueError("Replacement counts do not align with the accumulator")
+
+        for _, window in destination.block_windows(1):
+            y_slice = slice(int(window.row_off), int(window.row_off + window.height))
+            x_slice = slice(int(window.col_off), int(window.col_off + window.width))
+            old = (
+                old_clipped.isel(y=y_slice, x=x_slice).compute().values.astype("uint32")
+            )
+            new = (
+                new_clipped.isel(y=y_slice, x=x_slice).compute().values.astype("uint32")
+            )
+            aggregate = destination.read(window=window, out_dtype="uint32")
+            if np.any(old > aggregate):
+                raise ValueError("Old yearly counts exceed the five-year accumulator")
+            replacement = aggregate - old + new
+            destination.write(replacement, window=window)
 
 
 def finalize_count_accumulator(accumulator: Path, output: Path) -> None:

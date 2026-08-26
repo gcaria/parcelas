@@ -1,0 +1,131 @@
+name: Replace 2023 Sentinel counts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regional-five-year-sentinel
+  cancel-in-progress: false
+
+env:
+  OUTPUT_PREFIX: gs://parcelas-wrs2/previews/sentinel2-2020-2024
+  CHECKPOINT_PREFIX: gs://parcelas-wrs2/checkpoints/sentinel2-multiyear
+  METRIC_VERSION: daily-2023-v1
+
+jobs:
+  process-tile:
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        tile:
+          - T18GWA
+          - T18GXA
+          - T18GXV
+          - T18GYA
+          - T18GYV
+          - T18HWC
+          - T18HXB
+          - T18HXC
+          - T18HXD
+          - T18HXE
+          - T18HXF
+          - T18HYB
+          - T18HYC
+          - T18HYD
+          - T18HYE
+          - T18HYF
+          - T18HYG
+          - T18HYH
+          - T19GBQ
+          - T19GBR
+          - T19HBA
+          - T19HBB
+          - T19HBC
+          - T19HBD
+          - T19HBS
+          - T19HBT
+          - T19HBU
+          - T19HBV
+          - T19HCA
+          - T19HCB
+          - T19HCC
+          - T19HCD
+          - T19HCS
+          - T19HCT
+          - T19HCU
+          - T19HCV
+          - T19HDB
+          - T19HDC
+          - T19HDD
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      TILE_ID: ${{ matrix.tile }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Check for an existing corrected result
+        id: existing
+        run: |
+          tile_key="${TILE_ID#T}"
+          final_url="$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
+          if gcloud storage ls "$final_url.$METRIC_VERSION" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install system dependencies
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev libspatialindex-dev --no-install-recommends
+      - uses: actions/setup-python@v6
+        if: steps.existing.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install pipeline dependencies
+        if: steps.existing.outputs.skip != 'true'
+        run: pip install -r requirements.txt
+
+      - name: Restore legacy five-year counts
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          mkdir -p output
+          if [[ "$TILE_ID" == "T19HCC" ]]; then
+            source_prefix="gs://parcelas-wrs2/checkpoints/cloud-run"
+          else
+            source_prefix="$CHECKPOINT_PREFIX"
+          fi
+          gcloud storage cp \
+            "$source_prefix/sentinel2_${TILE_ID}_2020_2024-through-2024.tif" \
+            output/counts.tif
+
+      - name: Replace 2023 counts
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          python -m data_pipeline.replace_multiyear_year \
+            --tile-id "$TILE_ID" \
+            --year 2023 \
+            --accumulator output/counts.tif \
+            --output output/result.tif \
+            --buffer -500
+
+      - name: Publish corrected tile
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          tile_key="${TILE_ID#T}"
+          final_url="$OUTPUT_PREFIX/sentinel2_${tile_key}_uint8.tif"
+          gcloud storage cp output/result.tif "$final_url"
+          printf '%s\n' "$METRIC_VERSION" > output/metric-version.txt
+          gcloud storage cp output/metric-version.txt "$final_url.$METRIC_VERSION"
