@@ -135,9 +135,9 @@ html, body, #map {
 .leaflet-position-value input {
   margin: 0;
 }
-.leaflet-position-value-output {
-  margin-top: 6px;
-  font-size: 13px;
+.leaflet-tooltip.leaflet-position-value-tooltip {
+  pointer-events: none;
+  font: 12px sans-serif;
 }
 
 /* ===========================

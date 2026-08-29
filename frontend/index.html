@@ -220,7 +220,7 @@
 
       // --- Mouse Position Value Control ---
       let positionValuesEnabled = false;
-      let positionValueOutput = null;
+      let positionValueTooltip = null;
       let positionValueTimer = null;
       let positionValueRequest = null;
       let selectedSensor = DEFAULT_SELECTED_SENSOR;
@@ -236,24 +236,15 @@
           checkbox.type = "checkbox";
           label.appendChild(document.createTextNode("Show position value"));
 
-          positionValueOutput = L.DomUtil.create(
-            "div",
-            "leaflet-position-value-output",
-            container,
-          );
-          positionValueOutput.textContent = "Clear Sky Days (%): —";
-          positionValueOutput.hidden = true;
-
           L.DomEvent.disableClickPropagation(container);
           L.DomEvent.disableScrollPropagation(container);
           checkbox.addEventListener("change", () => {
             positionValuesEnabled = checkbox.checked;
-            positionValueOutput.hidden = !positionValuesEnabled;
             clearTimeout(positionValueTimer);
             positionValueRequest?.abort();
             positionValueRequest = null;
-            if (positionValuesEnabled) {
-              positionValueOutput.textContent = "Clear Sky Days (%): move mouse";
+            if (!positionValuesEnabled && positionValueTooltip) {
+              map.removeLayer(positionValueTooltip);
             }
           });
 
@@ -354,8 +345,8 @@
 
         selectedSensor = sensor;
         positionValueRequest?.abort();
-        if (positionValuesEnabled && positionValueOutput) {
-          positionValueOutput.textContent = "Clear Sky Days (%): move mouse";
+        if (positionValueTooltip) {
+          positionValueTooltip.setContent("Clear Sky Days (%): …");
         }
 
         const dataIsVisible = mosaicLayer ? map.hasLayer(mosaicLayer) : true;
@@ -467,13 +458,14 @@
             throw new Error(`Point request failed: ${response.status}`);
           }
           const value = pointValue(await response.json());
-          positionValueOutput.textContent =
+          positionValueTooltip.setContent(
             value == null
               ? "Clear Sky Days (%): no data"
-              : `Clear Sky Days (%): ${Math.round(value)}`;
+              : `Clear Sky Days (%): ${Math.round(value)}`,
+          );
         } catch (error) {
           if (error.name !== "AbortError") {
-            positionValueOutput.textContent = "Clear Sky Days (%): unavailable";
+            positionValueTooltip.setContent("Clear Sky Days (%): unavailable");
             debugLog(`Point value error: ${error.message}`, "error");
           }
         }
@@ -483,11 +475,32 @@
         if (!positionValuesEnabled || !mosaicLayer || !map.hasLayer(mosaicLayer)) {
           return;
         }
+        positionValueRequest?.abort();
         clearTimeout(positionValueTimer);
+        if (!positionValueTooltip) {
+          positionValueTooltip = L.tooltip({
+            permanent: true,
+            direction: "right",
+            offset: [12, 0],
+            className: "leaflet-position-value-tooltip",
+          });
+        }
+        positionValueTooltip
+          .setLatLng(event.latlng)
+          .setContent("Clear Sky Days (%): …")
+          .addTo(map);
         positionValueTimer = setTimeout(
           () => updatePositionValue(event.latlng),
           250,
         );
+      });
+
+      map.getContainer().addEventListener("mouseleave", () => {
+        clearTimeout(positionValueTimer);
+        positionValueRequest?.abort();
+        if (positionValueTooltip) {
+          map.removeLayer(positionValueTooltip);
+        }
       });
 
       // Catch global errors
