@@ -42,6 +42,7 @@ def test_valid_api_key():
         "/mosaicjson/sensors",
         "/mosaicjson/info",
         "/mosaicjson/tiles/WebMercatorQuad/8/77/152.png",
+        "/mosaicjson/point/-71.543,-35.675",
     ],
 )
 def test_frontend_read_routes_are_public(path):
@@ -157,6 +158,7 @@ def test_rate_limit_isolated_by_forwarded_client_ip():
     )
 
 
-def test_tile_reads_are_exempt_from_ip_rate_limit():
+def test_map_reads_are_exempt_from_ip_rate_limit():
     assert _is_rate_limit_exempt("/mosaicjson/tiles/WebMercatorQuad/8/77/152.png")
+    assert _is_rate_limit_exempt("/mosaicjson/point/-71.543,-35.675")
     assert not _is_rate_limit_exempt("/mosaicjson/validate")

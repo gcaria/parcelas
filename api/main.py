@@ -20,8 +20,8 @@ RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
 SUPPORTED_SENSORS = {"landsat", "sentinel2"}
 PUBLIC_PATHS = {"/health", "/mosaicjson/sensors", "/mosaicjson/info"}
-PUBLIC_PATH_PREFIXES = ("/mosaicjson/tiles/",)
-RATE_LIMIT_EXEMPT_PREFIXES = ("/mosaicjson/tiles/",)
+PUBLIC_PATH_PREFIXES = ("/mosaicjson/tiles/", "/mosaicjson/point/")
+RATE_LIMIT_EXEMPT_PREFIXES = ("/mosaicjson/tiles/", "/mosaicjson/point/")
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:3001",  # default for local dev only
