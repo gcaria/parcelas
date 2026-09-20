@@ -537,7 +537,8 @@
           const mapInfo = await response.json();
           precipitationLayer = L.tileLayer(mapInfo.tile_url, {
             opacity: 0.75,
-            attribution: "CHIRPS v3: UCSB Climate Hazards Center",
+            attribution:
+              "CHIRPS v3: UCSB Climate Hazards Center; water mask: EC JRC/Google",
           });
           precipitationLayer.on("tileerror", (event) =>
             debugLog(`CHIRPS tile error: ${event.tile.src}`, "error"),

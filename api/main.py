@@ -241,6 +241,10 @@ def _chirps_precipitation_map() -> dict:
         .divide(5)
         .rename("mean_annual_precipitation_mm")
     )
+    non_water = (
+        ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence").unmask(0).lt(90)
+    )
+    precipitation = precipitation.updateMask(non_water)
     palette = [
         "fff7ec",
         "fee8c8",

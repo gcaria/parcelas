@@ -192,7 +192,8 @@ def test_chirps_precipitation_expression():
         _chirps_precipitation_map.cache_clear()
         collection = ee.ImageCollection.return_value
         image = collection.filterDate.return_value.select.return_value.sum.return_value
-        result = image.divide.return_value.rename.return_value
+        annual_precipitation = image.divide.return_value.rename.return_value
+        result = annual_precipitation.updateMask.return_value
         result.getMapId.return_value = {
             "tile_fetcher": type(
                 "TileFetcher",
@@ -210,5 +211,13 @@ def test_chirps_precipitation_expression():
             "precipitation"
         )
         image.divide.assert_called_once_with(5)
+        ee.Image.assert_called_once_with("JRC/GSW1_4/GlobalSurfaceWater")
+        occurrence = ee.Image.return_value.select
+        occurrence.assert_called_once_with("occurrence")
+        unmasked_occurrence = occurrence.return_value.unmask
+        unmasked_occurrence.assert_called_once_with(0)
+        non_water = unmasked_occurrence.return_value.lt.return_value
+        unmasked_occurrence.return_value.lt.assert_called_once_with(90)
+        annual_precipitation.updateMask.assert_called_once_with(non_water)
         assert response["period"] == "2020–2024"
         _chirps_precipitation_map.cache_clear()

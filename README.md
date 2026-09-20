@@ -77,10 +77,12 @@ Then navigate to `http://localhost:3001`.
 
 The precipitation overlay sums CHIRPS v3 daily reanalysis precipitation for
 2020–2024 and divides by five to show mean annual precipitation in mm/year on
-its native 0.05° grid. It uses Application Default Credentials on the API
-service. Its service account must be registered for Earth Engine and have access
-to the project configured by `EARTH_ENGINE_PROJECT`. The frontend requests only
-an Earth Engine map tile URL; credentials are never sent to the browser.
+its native 0.05° grid. As with the clear-sky products, pixels with at least 90%
+water occurrence in JRC Global Surface Water v1.4 are masked. The overlay uses
+Application Default Credentials on the API service. Its service account must be
+registered for Earth Engine and have access to the project configured by
+`EARTH_ENGINE_PROJECT`. The frontend requests only an Earth Engine map tile URL;
+credentials are never sent to the browser.
 
 ### Running the Data Pipeline
 
