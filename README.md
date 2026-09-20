@@ -19,7 +19,7 @@ Parcelas processes satellite classification bands from the [Microsoft Planetary 
 - Sequential, observation-weighted multi-year Sentinel-2 processing
 - Progressive Sentinel-2 mosaics assembled from completed tile workflows
 - Mosaic generation and validation via a FastAPI backend
-- Interactive Leaflet map with mutually exclusive clear-sky, precipitation, and temperature data selection, Landsat/Sentinel selection, and street/satellite basemap controls
+- Interactive Leaflet map with mutually exclusive clear-sky, precipitation, temperature, and basemap-only selection, Landsat/Sentinel selection, and street/satellite basemap controls
 - Optional CHIRPS v3 mean annual precipitation layer for 2020–2024
 - Optional TerraClimate monthly mean air-temperature layers for 2020–2024
 - A responsive discrete 0–100% clear-sky colorbar
