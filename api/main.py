@@ -223,6 +223,14 @@ mosaic = MosaicTilerFactory(backend=MosaicBackend, router_prefix="/mosaicjson")
 app.include_router(mosaic.router, prefix="/mosaicjson")
 
 
+def _chile_geometry(ee):
+    return (
+        ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+        .filter(ee.Filter.eq("country_na", "Chile"))
+        .geometry()
+    )
+
+
 @lru_cache(maxsize=1)
 def _chirps_precipitation_map() -> dict:
     """Create the CHIRPS v3 map for 2020–2024 mean annual precipitation."""
@@ -245,7 +253,7 @@ def _chirps_precipitation_map() -> dict:
     non_water = (
         ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence").unmask(0).lt(90)
     )
-    precipitation = precipitation.updateMask(non_water)
+    precipitation = precipitation.updateMask(non_water).clip(_chile_geometry(ee))
     palette = [
         "fff7ec",
         "fee8c8",
@@ -311,7 +319,7 @@ def _terraclimate_temperature_map() -> dict:
     non_water = (
         ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence").unmask(0).lt(90)
     )
-    temperature = temperature.updateMask(non_water)
+    temperature = temperature.updateMask(non_water).clip(_chile_geometry(ee))
     palette = [
         "313695",
         "4575b4",

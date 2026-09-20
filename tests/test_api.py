@@ -195,7 +195,8 @@ def test_chirps_precipitation_expression():
         collection = ee.ImageCollection.return_value
         image = collection.filterDate.return_value.select.return_value.sum.return_value
         annual_precipitation = image.divide.return_value.rename.return_value
-        result = annual_precipitation.updateMask.return_value
+        masked_precipitation = annual_precipitation.updateMask.return_value
+        result = masked_precipitation.clip.return_value
         result.getMapId.return_value = {
             "tile_fetcher": type(
                 "TileFetcher",
@@ -221,6 +222,14 @@ def test_chirps_precipitation_expression():
         non_water = unmasked_occurrence.return_value.lt.return_value
         unmasked_occurrence.return_value.lt.assert_called_once_with(90)
         annual_precipitation.updateMask.assert_called_once_with(non_water)
+        countries = ee.FeatureCollection.return_value
+        ee.FeatureCollection.assert_called_once_with("USDOS/LSIB_SIMPLE/2017")
+        ee.Filter.eq.assert_called_once_with("country_na", "Chile")
+        countries.filter.assert_called_once_with(ee.Filter.eq.return_value)
+        countries.filter.return_value.geometry.assert_called_once_with()
+        masked_precipitation.clip.assert_called_once_with(
+            countries.filter.return_value.geometry.return_value
+        )
         assert response["period"] == "2020–2024"
         _chirps_precipitation_map.cache_clear()
 
@@ -249,7 +258,8 @@ def test_terraclimate_temperature_expression():
         annual_temperature = (
             weighted_collection.sum.return_value.divide.return_value.rename.return_value
         )
-        result = annual_temperature.updateMask.return_value
+        masked_temperature = annual_temperature.updateMask.return_value
+        result = masked_temperature.clip.return_value
         result.getMapId.return_value = {
             "tile_fetcher": type(
                 "TileFetcher",
@@ -281,5 +291,13 @@ def test_terraclimate_temperature_expression():
         assert weighted_month_result is scaled_mean.return_value.multiply.return_value
         weighted_collection.sum.return_value.divide.assert_called_once_with(1827)
         annual_temperature.updateMask.assert_called_once()
+        countries = ee.FeatureCollection.return_value
+        ee.FeatureCollection.assert_called_once_with("USDOS/LSIB_SIMPLE/2017")
+        ee.Filter.eq.assert_called_once_with("country_na", "Chile")
+        countries.filter.assert_called_once_with(ee.Filter.eq.return_value)
+        countries.filter.return_value.geometry.assert_called_once_with()
+        masked_temperature.clip.assert_called_once_with(
+            countries.filter.return_value.geometry.return_value
+        )
         assert response["period"] == "2020–2024"
         _terraclimate_temperature_map.cache_clear()
