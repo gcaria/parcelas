@@ -8,6 +8,7 @@ services:
     environment:
       - API_KEY=${API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json
+      - EARTH_ENGINE_PROJECT=${EARTH_ENGINE_PROJECT}
       - COG_STORAGE_URL=${COG_STORAGE_URL}
       - PYTHONAPP=/app
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}

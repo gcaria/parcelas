@@ -20,6 +20,7 @@ Parcelas processes satellite classification bands from the [Microsoft Planetary 
 - Progressive Sentinel-2 mosaics assembled from completed tile workflows
 - Mosaic generation and validation via a FastAPI backend
 - Interactive Leaflet map with Landsat/Sentinel selection, data visibility, and street/satellite basemap controls
+- Optional ERA5-Land mean annual precipitation layer for 2020–2024
 - A responsive discrete 0–100% clear-sky colorbar
 - API key authentication and IP-based rate limiting
 - Docker-based local development
@@ -72,6 +73,12 @@ Then navigate to `http://localhost:3001`.
 | `API_KEY` | Server-side secret for administrative API requests | — |
 | `COG_STORAGE_URL` | GCS path to COG files (e.g. `gs://my-bucket/cogs`) | — |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3001` |
+| `EARTH_ENGINE_PROJECT` | Google Cloud project registered for Earth Engine | `GOOGLE_CLOUD_PROJECT` |
+
+The precipitation overlay uses Application Default Credentials on the API
+service. Its service account must be registered for Earth Engine and have access
+to the project configured by `EARTH_ENGINE_PROJECT`. The frontend requests only
+an Earth Engine map tile URL; credentials are never sent to the browser.
 
 ### Running the Data Pipeline
 

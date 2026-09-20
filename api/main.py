@@ -5,6 +5,7 @@ import os
 import secrets
 import time
 from collections import defaultdict
+from functools import lru_cache
 from typing import Optional
 
 import gcsfs
@@ -19,7 +20,12 @@ RATE_LIMIT = 100  # requests
 RATE_WINDOW = 60  # seconds
 API_KEY = os.getenv("API_KEY")
 SUPPORTED_SENSORS = {"landsat", "sentinel2"}
-PUBLIC_PATHS = {"/health", "/mosaicjson/sensors", "/mosaicjson/info"}
+PUBLIC_PATHS = {
+    "/health",
+    "/era5/precipitation/map",
+    "/mosaicjson/sensors",
+    "/mosaicjson/info",
+}
 PUBLIC_PATH_PREFIXES = ("/mosaicjson/tiles/", "/mosaicjson/point/")
 RATE_LIMIT_EXEMPT_PREFIXES = ("/mosaicjson/tiles/", "/mosaicjson/point/")
 ALLOWED_ORIGINS = os.getenv(
@@ -214,6 +220,60 @@ def validate_mosaic(gcs_path: str):
 
 mosaic = MosaicTilerFactory(backend=MosaicBackend, router_prefix="/mosaicjson")
 app.include_router(mosaic.router, prefix="/mosaicjson")
+
+
+@lru_cache(maxsize=1)
+def _era5_precipitation_map() -> dict:
+    """Create the Earth Engine map for 2020–2024 mean annual precipitation."""
+    import ee
+
+    project = os.getenv("EARTH_ENGINE_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project:
+        ee.Initialize(project=project)
+    else:
+        ee.Initialize()
+
+    precipitation = (
+        ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+        .filterDate("2020-01-01", "2025-01-01")
+        .select("total_precipitation_sum")
+        .sum()
+        .divide(5)
+        .multiply(1000)
+        .max(0)
+        .rename("mean_annual_precipitation_mm")
+    )
+    palette = [
+        "fff7ec",
+        "fee8c8",
+        "fdd49e",
+        "fdbb84",
+        "fc8d59",
+        "ef6548",
+        "d7301f",
+        "b30000",
+        "7f0000",
+    ]
+    map_id = precipitation.getMapId({"min": 0, "max": 3000, "palette": palette})
+    return {
+        "tile_url": map_id["tile_fetcher"].url_format,
+        "min_mm": 0,
+        "max_mm": 3000,
+        "palette": palette,
+        "period": "2020–2024",
+    }
+
+
+@app.get("/era5/precipitation/map")
+def era5_precipitation_map():
+    """Return tiles for 2020–2024 ERA5-Land mean annual precipitation."""
+    try:
+        return _era5_precipitation_map()
+    except Exception as error:
+        logger.exception("Unable to create the ERA5-Land precipitation map")
+        raise HTTPException(
+            status_code=503, detail="ERA5-Land precipitation layer is unavailable"
+        ) from error
 
 
 @app.get("/health")

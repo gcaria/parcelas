@@ -1,9 +1,15 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import _is_public_path, _is_rate_limit_exempt, app, rate_limit_storage
+from api.main import (
+    _era5_precipitation_map,
+    _is_public_path,
+    _is_rate_limit_exempt,
+    app,
+    rate_limit_storage,
+)
 
 client = TestClient(app)
 
@@ -39,6 +45,7 @@ def test_valid_api_key():
     "path",
     [
         "/health",
+        "/era5/precipitation/map",
         "/mosaicjson/sensors",
         "/mosaicjson/info",
         "/mosaicjson/tiles/WebMercatorQuad/8/77/152.png",
@@ -162,3 +169,47 @@ def test_map_reads_are_exempt_from_ip_rate_limit():
     assert _is_rate_limit_exempt("/mosaicjson/tiles/WebMercatorQuad/8/77/152.png")
     assert _is_rate_limit_exempt("/mosaicjson/point/-71.543,-35.675")
     assert not _is_rate_limit_exempt("/mosaicjson/validate")
+
+
+def test_era5_precipitation_map():
+    expected = {
+        "tile_url": "https://earthengine.example/{z}/{x}/{y}",
+        "min_mm": 0,
+        "max_mm": 3000,
+        "palette": ["fff7ec"],
+        "period": "2020–2024",
+    }
+    with patch("api.main._era5_precipitation_map", return_value=expected):
+        response = client.get("/era5/precipitation/map")
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_era5_precipitation_expression():
+    ee = MagicMock()
+    with patch.dict("sys.modules", {"ee": ee}):
+        _era5_precipitation_map.cache_clear()
+        collection = ee.ImageCollection.return_value
+        image = collection.filterDate.return_value.select.return_value.sum.return_value
+        result = image.divide.return_value.multiply.return_value.max.return_value.rename.return_value
+        result.getMapId.return_value = {
+            "tile_fetcher": type(
+                "TileFetcher",
+                (),
+                {"url_format": "https://earthengine.example/{z}/{x}/{y}"},
+            )()
+        }
+
+        response = _era5_precipitation_map()
+
+        ee.Initialize.assert_called_once()
+        ee.ImageCollection.assert_called_once_with("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+        collection.filterDate.assert_called_once_with("2020-01-01", "2025-01-01")
+        collection.filterDate.return_value.select.assert_called_once_with(
+            "total_precipitation_sum"
+        )
+        image.divide.assert_called_once_with(5)
+        image.divide.return_value.multiply.assert_called_once_with(1000)
+        assert response["period"] == "2020–2024"
+        _era5_precipitation_map.cache_clear()
