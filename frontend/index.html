@@ -110,6 +110,20 @@
         "#d73027",
         "#a50026",
       ];
+      const MONTH_NAMES = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
       // TiTiler applies the colormap after rescaling 0–100 into an 8-bit
       // render range, so map all 256 rendered values into the ten classes.
       const DISCRETE_COLORMAP = Object.fromEntries(
@@ -244,7 +258,7 @@
           container.style.display = "none";
 
           const title = L.DomUtil.create("div", "colorbar-title", container);
-          title.textContent = "Mean Air Temperature (°C)";
+          title.textContent = "Monthly Mean Air Temperature (°C)";
 
           const gradient = L.DomUtil.create(
             "div",
@@ -261,26 +275,35 @@
             "colorbar-labels",
             container,
           );
-          [-5, 0, 5, 10, 15, 20, 25].forEach((value) => {
-            const span = document.createElement("span");
-            span.textContent = value;
-            labels.appendChild(span);
-          });
-
           const subtext = L.DomUtil.create(
             "div",
             "colorbar-subtext",
             container,
           );
           subtext.textContent =
-            "TerraClimate day-weighted mean, 2020–2024 · 4.64 km grid";
+            "TerraClimate monthly mean, 2020–2024 · loading range…";
           this.container = container;
+          this.labels = labels;
+          this.subtext = subtext;
           return container;
         },
         setVisible: function (visible) {
           if (this.container) {
             this.container.style.display = visible ? "block" : "none";
           }
+        },
+        setRange: function (month, min, max, percentiles) {
+          this.labels.replaceChildren();
+          Array.from({ length: 6 }, (_, index) =>
+            min + ((max - min) * index) / 5,
+          ).forEach((value) => {
+            const span = document.createElement("span");
+            span.textContent = value.toFixed(1);
+            this.labels.appendChild(span);
+          });
+          this.subtext.textContent =
+            `${MONTH_NAMES[month - 1]} mean, 2020–2024 · ` +
+            `P${percentiles[0]}–P${percentiles[1]} stretch · 4.64 km grid`;
         },
       });
 
@@ -325,7 +348,7 @@
           [
             ["clear_sky", "Clear-sky days"],
             ["precipitation", "Mean annual precipitation"],
-            ["temperature", "Mean air temperature"],
+            ["temperature", "Monthly mean temperature"],
           ].forEach(([value, text]) => {
             const option = document.createElement("option");
             option.value = value;
@@ -337,6 +360,36 @@
           L.DomEvent.disableScrollPropagation(container);
           select.addEventListener("change", (event) => {
             setDataProduct(event.target.value);
+          });
+          return container;
+        },
+      });
+
+      const MonthSelector = L.Control.extend({
+        options: {
+          position: "topleft",
+        },
+        onAdd: function () {
+          const container = L.DomUtil.create("div", "leaflet-sensor-selector");
+          container.style.display = "none";
+          const label = L.DomUtil.create("label", "", container);
+          label.setAttribute("for", "month-select");
+          label.textContent = "Month";
+
+          const select = L.DomUtil.create("select", "", container);
+          select.id = "month-select";
+          MONTH_NAMES.forEach((name, index) => {
+            const option = document.createElement("option");
+            option.value = index + 1;
+            option.textContent = name;
+            select.appendChild(option);
+          });
+
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.disableScrollPropagation(container);
+          select.addEventListener("change", (event) => {
+            selectedTemperatureMonth = Number(event.target.value);
+            initializeTemperature(selectedTemperatureMonth);
           });
           return container;
         },
@@ -471,7 +524,10 @@
       let precipitationLayer = null;
       let temperatureLayer = null;
       let selectedDataProduct = "clear_sky";
+      let selectedTemperatureMonth = 1;
+      let temperatureRequestId = 0;
       let sensorSelectorControl = null;
+      let monthSelectorControl = null;
 
       const attachMosaicLayerEvents = (layer) => {
         layer.on("tileloadstart", (e) => {
@@ -587,6 +643,10 @@
             ? "flex"
             : "none";
         }
+        if (monthSelectorControl) {
+          monthSelectorControl.getContainer().style.display =
+            product === "temperature" ? "flex" : "none";
+        }
 
         if (showClearSky && mosaicLayer) {
           mosaicLayer.addTo(map);
@@ -627,10 +687,15 @@
       };
       initializePrecipitation();
 
-      const initializeTemperature = async () => {
+      const initializeTemperature = async (month) => {
+        const requestId = ++temperatureRequestId;
+        if (temperatureLayer) {
+          map.removeLayer(temperatureLayer);
+          temperatureLayer = null;
+        }
         try {
           const response = await fetch(
-            `${API_BASE_URL}/terraclimate/temperature/map`,
+            `${API_BASE_URL}/terraclimate/temperature/map?month=${month}`,
           );
           if (!response.ok) {
             throw new Error(
@@ -638,6 +703,9 @@
             );
           }
           const mapInfo = await response.json();
+          if (requestId !== temperatureRequestId) {
+            return;
+          }
           temperatureLayer = L.tileLayer(mapInfo.tile_url, {
             opacity: 0.75,
             attribution:
@@ -646,10 +714,19 @@
           temperatureLayer.on("tileerror", (event) =>
             debugLog(`TerraClimate tile error: ${event.tile.src}`, "error"),
           );
+          temperatureColorBar.setRange(
+            mapInfo.month,
+            mapInfo.min_c,
+            mapInfo.max_c,
+            mapInfo.stretch_percentiles,
+          );
           if (selectedDataProduct === "temperature") {
             temperatureLayer.addTo(map);
           }
-          debugLog("TerraClimate temperature layer is ready", "success");
+          debugLog(
+            `TerraClimate ${MONTH_NAMES[month - 1]} layer is ready`,
+            "success",
+          );
         } catch (error) {
           debugLog(
             `Unable to initialize TerraClimate temperature: ${error.message}`,
@@ -657,9 +734,10 @@
           );
         }
       };
-      initializeTemperature();
+      initializeTemperature(selectedTemperatureMonth);
 
       new DataSelector().addTo(map);
+      monthSelectorControl = new MonthSelector().addTo(map);
       debugLog("Adding sensor selector...", "info");
       sensorSelectorControl = new SensorSelector().addTo(map);
       new PositionValue().addTo(map);

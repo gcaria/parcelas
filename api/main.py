@@ -11,7 +11,7 @@ from typing import Optional
 import gcsfs
 from cogeo_mosaic.backends import MosaicBackend
 from cogeo_mosaic.mosaic import MosaicJSON
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from titiler.mosaic.factory import MosaicTilerFactory
@@ -287,9 +287,9 @@ def chirps_precipitation_map():
         ) from error
 
 
-@lru_cache(maxsize=1)
-def _terraclimate_temperature_map() -> dict:
-    """Create the 2020–2024 day-weighted mean air-temperature map."""
+@lru_cache(maxsize=12)
+def _terraclimate_temperature_map(month: int) -> dict:
+    """Create a 2020–2024 monthly mean air-temperature map."""
     import ee
 
     project = os.getenv("EARTH_ENGINE_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -298,28 +298,30 @@ def _terraclimate_temperature_map() -> dict:
     else:
         ee.Initialize()
 
-    collection = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(
-        "2020-01-01", "2025-01-01"
+    collection = (
+        ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE")
+        .filterDate("2020-01-01", "2025-01-01")
+        .filter(ee.Filter.calendarRange(month, month, "month"))
     )
 
-    def weighted_month(image):
-        date = ee.Date(image.get("system:time_start"))
-        days = date.advance(1, "month").difference(date, "day")
-        mean_temperature = (
-            image.select(["tmmn", "tmmx"]).reduce(ee.Reducer.mean()).multiply(0.1)
-        )
-        return mean_temperature.multiply(days)
+    def mean_month(image):
+        return image.select(["tmmn", "tmmx"]).reduce(ee.Reducer.mean()).multiply(0.1)
 
-    temperature = (
-        collection.map(weighted_month)
-        .sum()
-        .divide(1827)
-        .rename("mean_air_temperature_c")
-    )
+    temperature = collection.map(mean_month).mean().rename("mean_air_temperature_c")
     non_water = (
         ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence").unmask(0).lt(90)
     )
-    temperature = temperature.updateMask(non_water).clip(_chile_geometry(ee))
+    chile = _chile_geometry(ee)
+    temperature = temperature.updateMask(non_water).clip(chile)
+    percentiles = temperature.reduceRegion(
+        reducer=ee.Reducer.percentile([2, 98]),
+        geometry=chile,
+        scale=4638.3,
+        bestEffort=True,
+        maxPixels=10_000_000,
+    ).getInfo()
+    min_c = percentiles["mean_air_temperature_c_p2"]
+    max_c = percentiles["mean_air_temperature_c_p98"]
     palette = [
         "313695",
         "4575b4",
@@ -333,21 +335,23 @@ def _terraclimate_temperature_map() -> dict:
         "d73027",
         "a50026",
     ]
-    map_id = temperature.getMapId({"min": -5, "max": 25, "palette": palette})
+    map_id = temperature.getMapId({"min": min_c, "max": max_c, "palette": palette})
     return {
         "tile_url": map_id["tile_fetcher"].url_format,
-        "min_c": -5,
-        "max_c": 25,
+        "min_c": min_c,
+        "max_c": max_c,
         "palette": palette,
         "period": "2020–2024",
+        "month": month,
+        "stretch_percentiles": [2, 98],
     }
 
 
 @app.get("/terraclimate/temperature/map")
-def terraclimate_temperature_map():
-    """Return tiles for 2020–2024 TerraClimate mean air temperature."""
+def terraclimate_temperature_map(month: int = Query(1, ge=1, le=12)):
+    """Return tiles for a 2020–2024 TerraClimate monthly mean."""
     try:
-        return _terraclimate_temperature_map()
+        return _terraclimate_temperature_map(month)
     except Exception as error:
         logger.exception("Unable to create the TerraClimate temperature map")
         raise HTTPException(
