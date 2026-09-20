@@ -22,7 +22,7 @@ API_KEY = os.getenv("API_KEY")
 SUPPORTED_SENSORS = {"landsat", "sentinel2"}
 PUBLIC_PATHS = {
     "/health",
-    "/era5/precipitation/map",
+    "/chirps/precipitation/map",
     "/mosaicjson/sensors",
     "/mosaicjson/info",
 }
@@ -223,8 +223,8 @@ app.include_router(mosaic.router, prefix="/mosaicjson")
 
 
 @lru_cache(maxsize=1)
-def _era5_precipitation_map() -> dict:
-    """Create the Earth Engine map for 2020–2024 mean annual precipitation."""
+def _chirps_precipitation_map() -> dict:
+    """Create the CHIRPS v3 map for 2020–2024 mean annual precipitation."""
     import ee
 
     project = os.getenv("EARTH_ENGINE_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -234,13 +234,11 @@ def _era5_precipitation_map() -> dict:
         ee.Initialize()
 
     precipitation = (
-        ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+        ee.ImageCollection("UCSB-CHC/CHIRPS/V3/DAILY_RNL")
         .filterDate("2020-01-01", "2025-01-01")
-        .select("total_precipitation_sum")
+        .select("precipitation")
         .sum()
         .divide(5)
-        .multiply(1000)
-        .max(0)
         .rename("mean_annual_precipitation_mm")
     )
     palette = [
@@ -264,15 +262,15 @@ def _era5_precipitation_map() -> dict:
     }
 
 
-@app.get("/era5/precipitation/map")
-def era5_precipitation_map():
-    """Return tiles for 2020–2024 ERA5-Land mean annual precipitation."""
+@app.get("/chirps/precipitation/map")
+def chirps_precipitation_map():
+    """Return tiles for 2020–2024 CHIRPS v3 mean annual precipitation."""
     try:
-        return _era5_precipitation_map()
+        return _chirps_precipitation_map()
     except Exception as error:
-        logger.exception("Unable to create the ERA5-Land precipitation map")
+        logger.exception("Unable to create the CHIRPS precipitation map")
         raise HTTPException(
-            status_code=503, detail="ERA5-Land precipitation layer is unavailable"
+            status_code=503, detail="CHIRPS precipitation layer is unavailable"
         ) from error
 
 

@@ -205,7 +205,7 @@
             "colorbar-subtext",
             container,
           );
-          subtext.textContent = "ERA5-Land average, 2020–2024";
+          subtext.textContent = "CHIRPS v3 average, 2020–2024 · 0.05° grid";
           this.container = container;
           return container;
         },
@@ -466,27 +466,28 @@
 
       const initializePrecipitation = async () => {
         try {
-          const response = await fetch(`${API_BASE_URL}/era5/precipitation/map`);
+          const response = await fetch(
+            `${API_BASE_URL}/chirps/precipitation/map`,
+          );
           if (!response.ok) {
-            throw new Error(`ERA5 map request failed: ${response.status}`);
+            throw new Error(`CHIRPS map request failed: ${response.status}`);
           }
           const mapInfo = await response.json();
           precipitationLayer = L.tileLayer(mapInfo.tile_url, {
             opacity: 0.75,
-            attribution:
-              "Contains modified Copernicus Climate Change Service information (2020–2024)",
+            attribution: "CHIRPS v3: UCSB Climate Hazards Center",
           });
           precipitationLayer.on("tileerror", (event) =>
-            debugLog(`ERA5 tile error: ${event.tile.src}`, "error"),
+            debugLog(`CHIRPS tile error: ${event.tile.src}`, "error"),
           );
           layerControl.addOverlay(
             precipitationLayer,
-            "ERA5-Land precipitation (2020–2024)",
+            "CHIRPS precipitation (2020–2024)",
           );
-          debugLog("ERA5-Land precipitation layer is ready", "success");
+          debugLog("CHIRPS precipitation layer is ready", "success");
         } catch (error) {
           debugLog(
-            `Unable to initialize ERA5-Land precipitation: ${error.message}`,
+            `Unable to initialize CHIRPS precipitation: ${error.message}`,
             "error",
           );
         }

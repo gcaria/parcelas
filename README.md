@@ -20,7 +20,7 @@ Parcelas processes satellite classification bands from the [Microsoft Planetary 
 - Progressive Sentinel-2 mosaics assembled from completed tile workflows
 - Mosaic generation and validation via a FastAPI backend
 - Interactive Leaflet map with Landsat/Sentinel selection, data visibility, and street/satellite basemap controls
-- Optional ERA5-Land mean annual precipitation layer for 2020–2024
+- Optional CHIRPS v3 mean annual precipitation layer for 2020–2024
 - A responsive discrete 0–100% clear-sky colorbar
 - API key authentication and IP-based rate limiting
 - Docker-based local development
@@ -75,7 +75,9 @@ Then navigate to `http://localhost:3001`.
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3001` |
 | `EARTH_ENGINE_PROJECT` | Google Cloud project registered for Earth Engine | `GOOGLE_CLOUD_PROJECT` |
 
-The precipitation overlay uses Application Default Credentials on the API
+The precipitation overlay sums CHIRPS v3 daily reanalysis precipitation for
+2020–2024 and divides by five to show mean annual precipitation in mm/year on
+its native 0.05° grid. It uses Application Default Credentials on the API
 service. Its service account must be registered for Earth Engine and have access
 to the project configured by `EARTH_ENGINE_PROJECT`. The frontend requests only
 an Earth Engine map tile URL; credentials are never sent to the browser.

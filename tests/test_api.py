@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import (
-    _era5_precipitation_map,
+    _chirps_precipitation_map,
     _is_public_path,
     _is_rate_limit_exempt,
     app,
@@ -45,7 +45,7 @@ def test_valid_api_key():
     "path",
     [
         "/health",
-        "/era5/precipitation/map",
+        "/chirps/precipitation/map",
         "/mosaicjson/sensors",
         "/mosaicjson/info",
         "/mosaicjson/tiles/WebMercatorQuad/8/77/152.png",
@@ -171,7 +171,7 @@ def test_map_reads_are_exempt_from_ip_rate_limit():
     assert not _is_rate_limit_exempt("/mosaicjson/validate")
 
 
-def test_era5_precipitation_map():
+def test_chirps_precipitation_map():
     expected = {
         "tile_url": "https://earthengine.example/{z}/{x}/{y}",
         "min_mm": 0,
@@ -179,20 +179,20 @@ def test_era5_precipitation_map():
         "palette": ["fff7ec"],
         "period": "2020–2024",
     }
-    with patch("api.main._era5_precipitation_map", return_value=expected):
-        response = client.get("/era5/precipitation/map")
+    with patch("api.main._chirps_precipitation_map", return_value=expected):
+        response = client.get("/chirps/precipitation/map")
 
     assert response.status_code == 200
     assert response.json() == expected
 
 
-def test_era5_precipitation_expression():
+def test_chirps_precipitation_expression():
     ee = MagicMock()
     with patch.dict("sys.modules", {"ee": ee}):
-        _era5_precipitation_map.cache_clear()
+        _chirps_precipitation_map.cache_clear()
         collection = ee.ImageCollection.return_value
         image = collection.filterDate.return_value.select.return_value.sum.return_value
-        result = image.divide.return_value.multiply.return_value.max.return_value.rename.return_value
+        result = image.divide.return_value.rename.return_value
         result.getMapId.return_value = {
             "tile_fetcher": type(
                 "TileFetcher",
@@ -201,15 +201,14 @@ def test_era5_precipitation_expression():
             )()
         }
 
-        response = _era5_precipitation_map()
+        response = _chirps_precipitation_map()
 
         ee.Initialize.assert_called_once()
-        ee.ImageCollection.assert_called_once_with("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+        ee.ImageCollection.assert_called_once_with("UCSB-CHC/CHIRPS/V3/DAILY_RNL")
         collection.filterDate.assert_called_once_with("2020-01-01", "2025-01-01")
         collection.filterDate.return_value.select.assert_called_once_with(
-            "total_precipitation_sum"
+            "precipitation"
         )
         image.divide.assert_called_once_with(5)
-        image.divide.return_value.multiply.assert_called_once_with(1000)
         assert response["period"] == "2020–2024"
-        _era5_precipitation_map.cache_clear()
+        _chirps_precipitation_map.cache_clear()
