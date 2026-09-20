@@ -164,7 +164,13 @@
             labels.appendChild(span);
           });
           container.appendChild(labels);
+          this.container = container;
           return container;
+        },
+        setVisible: function (visible) {
+          if (this.container) {
+            this.container.style.display = visible ? "block" : "none";
+          }
         },
       });
 
@@ -237,6 +243,38 @@
               View on GitHub
             </a>
           `;
+          return container;
+        },
+      });
+
+      // --- Data Selector Control ---
+      const DataSelector = L.Control.extend({
+        options: {
+          position: "topleft",
+        },
+        onAdd: function () {
+          const container = L.DomUtil.create("div", "leaflet-sensor-selector");
+          const label = L.DomUtil.create("label", "", container);
+          label.setAttribute("for", "data-select");
+          label.textContent = "Data";
+
+          const select = L.DomUtil.create("select", "", container);
+          select.id = "data-select";
+          [
+            ["clear_sky", "Clear-sky days"],
+            ["precipitation", "Mean annual precipitation"],
+          ].forEach(([value, text]) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = text;
+            select.appendChild(option);
+          });
+
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.disableScrollPropagation(container);
+          select.addEventListener("change", (event) => {
+            setDataProduct(event.target.value);
+          });
           return container;
         },
       });
@@ -368,6 +406,8 @@
       let tilesErrored = 0;
       let mosaicLayer = null;
       let precipitationLayer = null;
+      let selectedDataProduct = "clear_sky";
+      let sensorSelectorControl = null;
 
       const attachMosaicLayerEvents = (layer) => {
         layer.on("tileloadstart", (e) => {
@@ -409,10 +449,8 @@
           positionValueTooltip.setContent("Clear Sky Days (%): …");
         }
 
-        const dataIsVisible = mosaicLayer ? map.hasLayer(mosaicLayer) : true;
         if (mosaicLayer) {
           map.removeLayer(mosaicLayer);
-          layerControl.removeLayer(mosaicLayer);
         }
 
         tilesLoaded = 0;
@@ -430,8 +468,7 @@
           keepBuffer: 0,
         });
         attachMosaicLayerEvents(mosaicLayer);
-        layerControl.addOverlay(mosaicLayer, "Clear-sky data");
-        if (dataIsVisible) {
+        if (selectedDataProduct === "clear_sky") {
           mosaicLayer.addTo(map);
         }
       };
@@ -461,8 +498,33 @@
       };
 
       debugLog("Adding colorbar control...", "info");
-      new ColorBar().addTo(map);
+      const clearSkyColorBar = new ColorBar().addTo(map);
       const precipitationColorBar = new PrecipitationColorBar().addTo(map);
+
+      const setDataProduct = (product) => {
+        selectedDataProduct = product;
+        if (mosaicLayer) {
+          map.removeLayer(mosaicLayer);
+        }
+        if (precipitationLayer) {
+          map.removeLayer(precipitationLayer);
+        }
+
+        const showClearSky = product === "clear_sky";
+        clearSkyColorBar.setVisible(showClearSky);
+        precipitationColorBar.setVisible(!showClearSky);
+        if (sensorSelectorControl) {
+          sensorSelectorControl.getContainer().style.display = showClearSky
+            ? "flex"
+            : "none";
+        }
+
+        if (showClearSky && mosaicLayer) {
+          mosaicLayer.addTo(map);
+        } else if (!showClearSky && precipitationLayer) {
+          precipitationLayer.addTo(map);
+        }
+      };
 
       const initializePrecipitation = async () => {
         try {
@@ -480,10 +542,9 @@
           precipitationLayer.on("tileerror", (event) =>
             debugLog(`CHIRPS tile error: ${event.tile.src}`, "error"),
           );
-          layerControl.addOverlay(
-            precipitationLayer,
-            "CHIRPS precipitation (2020–2024)",
-          );
+          if (selectedDataProduct === "precipitation") {
+            precipitationLayer.addTo(map);
+          }
           debugLog("CHIRPS precipitation layer is ready", "success");
         } catch (error) {
           debugLog(
@@ -494,19 +555,9 @@
       };
       initializePrecipitation();
 
-      map.on("overlayadd", (event) => {
-        if (event.layer === precipitationLayer) {
-          precipitationColorBar.setVisible(true);
-        }
-      });
-      map.on("overlayremove", (event) => {
-        if (event.layer === precipitationLayer) {
-          precipitationColorBar.setVisible(false);
-        }
-      });
-
+      new DataSelector().addTo(map);
       debugLog("Adding sensor selector...", "info");
-      new SensorSelector().addTo(map);
+      sensorSelectorControl = new SensorSelector().addTo(map);
       new PositionValue().addTo(map);
       const initializeMosaic = async () => {
         // Position the map before adding a preview layer. Adding it first makes
