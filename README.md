@@ -19,8 +19,9 @@ Parcelas processes satellite classification bands from the [Microsoft Planetary 
 - Sequential, observation-weighted multi-year Sentinel-2 processing
 - Progressive Sentinel-2 mosaics assembled from completed tile workflows
 - Mosaic generation and validation via a FastAPI backend
-- Interactive Leaflet map with mutually exclusive clear-sky/precipitation data selection, Landsat/Sentinel selection, and street/satellite basemap controls
+- Interactive Leaflet map with mutually exclusive clear-sky, precipitation, and temperature data selection, Landsat/Sentinel selection, and street/satellite basemap controls
 - Optional CHIRPS v3 mean annual precipitation layer for 2020–2024
+- Optional TerraClimate mean air-temperature layer for 2020–2024
 - A responsive discrete 0–100% clear-sky colorbar
 - API key authentication and IP-based rate limiting
 - Docker-based local development
@@ -83,6 +84,12 @@ Application Default Credentials on the API service. Its service account must be
 registered for Earth Engine and have access to the project configured by
 `EARTH_ENGINE_PROJECT`. The frontend requests only an Earth Engine map tile URL;
 credentials are never sent to the browser.
+
+The temperature overlay uses TerraClimate monthly minimum and maximum air
+temperature. It calculates `(Tmin + Tmax) / 2`, applies the published 0.1 scale
+factor, and weights each monthly value by its number of days before averaging
+the complete 2020–2024 period. It uses the same JRC surface-water mask as the
+precipitation and clear-sky products.
 
 ### Running the Data Pipeline
 

@@ -23,6 +23,7 @@ SUPPORTED_SENSORS = {"landsat", "sentinel2"}
 PUBLIC_PATHS = {
     "/health",
     "/chirps/precipitation/map",
+    "/terraclimate/temperature/map",
     "/mosaicjson/sensors",
     "/mosaicjson/info",
 }
@@ -275,6 +276,74 @@ def chirps_precipitation_map():
         logger.exception("Unable to create the CHIRPS precipitation map")
         raise HTTPException(
             status_code=503, detail="CHIRPS precipitation layer is unavailable"
+        ) from error
+
+
+@lru_cache(maxsize=1)
+def _terraclimate_temperature_map() -> dict:
+    """Create the 2020–2024 day-weighted mean air-temperature map."""
+    import ee
+
+    project = os.getenv("EARTH_ENGINE_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project:
+        ee.Initialize(project=project)
+    else:
+        ee.Initialize()
+
+    collection = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(
+        "2020-01-01", "2025-01-01"
+    )
+
+    def weighted_month(image):
+        date = ee.Date(image.get("system:time_start"))
+        days = date.advance(1, "month").difference(date, "day")
+        mean_temperature = (
+            image.select(["tmmn", "tmmx"]).reduce(ee.Reducer.mean()).multiply(0.1)
+        )
+        return mean_temperature.multiply(days)
+
+    temperature = (
+        collection.map(weighted_month)
+        .sum()
+        .divide(1827)
+        .rename("mean_air_temperature_c")
+    )
+    non_water = (
+        ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence").unmask(0).lt(90)
+    )
+    temperature = temperature.updateMask(non_water)
+    palette = [
+        "313695",
+        "4575b4",
+        "74add1",
+        "abd9e9",
+        "e0f3f8",
+        "ffffbf",
+        "fee090",
+        "fdae61",
+        "f46d43",
+        "d73027",
+        "a50026",
+    ]
+    map_id = temperature.getMapId({"min": -5, "max": 25, "palette": palette})
+    return {
+        "tile_url": map_id["tile_fetcher"].url_format,
+        "min_c": -5,
+        "max_c": 25,
+        "palette": palette,
+        "period": "2020–2024",
+    }
+
+
+@app.get("/terraclimate/temperature/map")
+def terraclimate_temperature_map():
+    """Return tiles for 2020–2024 TerraClimate mean air temperature."""
+    try:
+        return _terraclimate_temperature_map()
+    except Exception as error:
+        logger.exception("Unable to create the TerraClimate temperature map")
+        raise HTTPException(
+            status_code=503, detail="TerraClimate temperature layer is unavailable"
         ) from error
 
 

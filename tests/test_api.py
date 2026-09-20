@@ -7,6 +7,7 @@ from api.main import (
     _chirps_precipitation_map,
     _is_public_path,
     _is_rate_limit_exempt,
+    _terraclimate_temperature_map,
     app,
     rate_limit_storage,
 )
@@ -46,6 +47,7 @@ def test_valid_api_key():
     [
         "/health",
         "/chirps/precipitation/map",
+        "/terraclimate/temperature/map",
         "/mosaicjson/sensors",
         "/mosaicjson/info",
         "/mosaicjson/tiles/WebMercatorQuad/8/77/152.png",
@@ -221,3 +223,63 @@ def test_chirps_precipitation_expression():
         annual_precipitation.updateMask.assert_called_once_with(non_water)
         assert response["period"] == "2020–2024"
         _chirps_precipitation_map.cache_clear()
+
+
+def test_terraclimate_temperature_map():
+    expected = {
+        "tile_url": "https://earthengine.example/{z}/{x}/{y}",
+        "min_c": -5,
+        "max_c": 25,
+        "palette": ["313695"],
+        "period": "2020–2024",
+    }
+    with patch("api.main._terraclimate_temperature_map", return_value=expected):
+        response = client.get("/terraclimate/temperature/map")
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_terraclimate_temperature_expression():
+    ee = MagicMock()
+    with patch.dict("sys.modules", {"ee": ee}):
+        _terraclimate_temperature_map.cache_clear()
+        collection = ee.ImageCollection.return_value.filterDate.return_value
+        weighted_collection = collection.map.return_value
+        annual_temperature = (
+            weighted_collection.sum.return_value.divide.return_value.rename.return_value
+        )
+        result = annual_temperature.updateMask.return_value
+        result.getMapId.return_value = {
+            "tile_fetcher": type(
+                "TileFetcher",
+                (),
+                {"url_format": "https://earthengine.example/{z}/{x}/{y}"},
+            )()
+        }
+
+        response = _terraclimate_temperature_map()
+
+        ee.ImageCollection.assert_called_once_with("IDAHO_EPSCOR/TERRACLIMATE")
+        ee.ImageCollection.return_value.filterDate.assert_called_once_with(
+            "2020-01-01", "2025-01-01"
+        )
+        weighted_month = collection.map.call_args.args[0]
+        month = MagicMock()
+        weighted_month_result = weighted_month(month)
+        month.get.assert_called_once_with("system:time_start")
+        ee.Date.assert_called_once_with(month.get.return_value)
+        date = ee.Date.return_value
+        date.advance.assert_called_once_with(1, "month")
+        date.advance.return_value.difference.assert_called_once_with(date, "day")
+        month.select.assert_called_once_with(["tmmn", "tmmx"])
+        month.select.return_value.reduce.assert_called_once_with(ee.Reducer.mean())
+        scaled_mean = month.select.return_value.reduce.return_value.multiply
+        scaled_mean.assert_called_once_with(0.1)
+        days = date.advance.return_value.difference.return_value
+        scaled_mean.return_value.multiply.assert_called_once_with(days)
+        assert weighted_month_result is scaled_mean.return_value.multiply.return_value
+        weighted_collection.sum.return_value.divide.assert_called_once_with(1827)
+        annual_temperature.updateMask.assert_called_once()
+        assert response["period"] == "2020–2024"
+        _terraclimate_temperature_map.cache_clear()

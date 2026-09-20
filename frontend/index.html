@@ -97,6 +97,19 @@
         "#b30000",
         "#7f0000",
       ];
+      const TEMPERATURE_COLORS = [
+        "#313695",
+        "#4575b4",
+        "#74add1",
+        "#abd9e9",
+        "#e0f3f8",
+        "#ffffbf",
+        "#fee090",
+        "#fdae61",
+        "#f46d43",
+        "#d73027",
+        "#a50026",
+      ];
       // TiTiler applies the colormap after rescaling 0–100 into an 8-bit
       // render range, so map all 256 rendered values into the ten classes.
       const DISCRETE_COLORMAP = Object.fromEntries(
@@ -222,6 +235,55 @@
         },
       });
 
+      const TemperatureColorBar = L.Control.extend({
+        options: {
+          position: "bottomright",
+        },
+        onAdd: function () {
+          const container = L.DomUtil.create("div", "leaflet-colorbar");
+          container.style.display = "none";
+
+          const title = L.DomUtil.create("div", "colorbar-title", container);
+          title.textContent = "Mean Air Temperature (°C)";
+
+          const gradient = L.DomUtil.create(
+            "div",
+            "colorbar-gradient",
+            container,
+          );
+          TEMPERATURE_COLORS.forEach((color) => {
+            const step = L.DomUtil.create("div", "colorbar-step", gradient);
+            step.style.backgroundColor = color;
+          });
+
+          const labels = L.DomUtil.create(
+            "div",
+            "colorbar-labels",
+            container,
+          );
+          [-5, 0, 5, 10, 15, 20, 25].forEach((value) => {
+            const span = document.createElement("span");
+            span.textContent = value;
+            labels.appendChild(span);
+          });
+
+          const subtext = L.DomUtil.create(
+            "div",
+            "colorbar-subtext",
+            container,
+          );
+          subtext.textContent =
+            "TerraClimate day-weighted mean, 2020–2024 · 4.64 km grid";
+          this.container = container;
+          return container;
+        },
+        setVisible: function (visible) {
+          if (this.container) {
+            this.container.style.display = visible ? "block" : "none";
+          }
+        },
+      });
+
       // --- GitHub Link Control ---
       const GitHubLink = L.Control.extend({
         options: {
@@ -263,6 +325,7 @@
           [
             ["clear_sky", "Clear-sky days"],
             ["precipitation", "Mean annual precipitation"],
+            ["temperature", "Mean air temperature"],
           ].forEach(([value, text]) => {
             const option = document.createElement("option");
             option.value = value;
@@ -406,6 +469,7 @@
       let tilesErrored = 0;
       let mosaicLayer = null;
       let precipitationLayer = null;
+      let temperatureLayer = null;
       let selectedDataProduct = "clear_sky";
       let sensorSelectorControl = null;
 
@@ -500,6 +564,7 @@
       debugLog("Adding colorbar control...", "info");
       const clearSkyColorBar = new ColorBar().addTo(map);
       const precipitationColorBar = new PrecipitationColorBar().addTo(map);
+      const temperatureColorBar = new TemperatureColorBar().addTo(map);
 
       const setDataProduct = (product) => {
         selectedDataProduct = product;
@@ -509,10 +574,14 @@
         if (precipitationLayer) {
           map.removeLayer(precipitationLayer);
         }
+        if (temperatureLayer) {
+          map.removeLayer(temperatureLayer);
+        }
 
         const showClearSky = product === "clear_sky";
         clearSkyColorBar.setVisible(showClearSky);
-        precipitationColorBar.setVisible(!showClearSky);
+        precipitationColorBar.setVisible(product === "precipitation");
+        temperatureColorBar.setVisible(product === "temperature");
         if (sensorSelectorControl) {
           sensorSelectorControl.getContainer().style.display = showClearSky
             ? "flex"
@@ -521,8 +590,10 @@
 
         if (showClearSky && mosaicLayer) {
           mosaicLayer.addTo(map);
-        } else if (!showClearSky && precipitationLayer) {
+        } else if (product === "precipitation" && precipitationLayer) {
           precipitationLayer.addTo(map);
+        } else if (product === "temperature" && temperatureLayer) {
+          temperatureLayer.addTo(map);
         }
       };
 
@@ -555,6 +626,38 @@
         }
       };
       initializePrecipitation();
+
+      const initializeTemperature = async () => {
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/terraclimate/temperature/map`,
+          );
+          if (!response.ok) {
+            throw new Error(
+              `TerraClimate map request failed: ${response.status}`,
+            );
+          }
+          const mapInfo = await response.json();
+          temperatureLayer = L.tileLayer(mapInfo.tile_url, {
+            opacity: 0.75,
+            attribution:
+              "TerraClimate: University of California Merced; water mask: EC JRC/Google",
+          });
+          temperatureLayer.on("tileerror", (event) =>
+            debugLog(`TerraClimate tile error: ${event.tile.src}`, "error"),
+          );
+          if (selectedDataProduct === "temperature") {
+            temperatureLayer.addTo(map);
+          }
+          debugLog("TerraClimate temperature layer is ready", "success");
+        } catch (error) {
+          debugLog(
+            `Unable to initialize TerraClimate temperature: ${error.message}`,
+            "error",
+          );
+        }
+      };
+      initializeTemperature();
 
       new DataSelector().addTo(map);
       debugLog("Adding sensor selector...", "info");
